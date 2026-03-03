@@ -1,0 +1,101 @@
+{
+  "year": 2026,
+  "regions": [
+    {
+      "name": "East",
+      "rounds": [
+        {
+          "name": "First Round",
+          "matches": [
+            { "id": "east-r64-1", "teams": [{ "seed": "1", "name": "Duke" }, { "seed": "16", "name": "Vermont" }] },
+            { "id": "east-r64-2", "teams": [{ "seed": "8", "name": "Florida Atlantic" }, { "seed": "9", "name": "Utah State" }] },
+            { "id": "east-r64-3", "teams": [{ "seed": "5", "name": "Creighton" }, { "seed": "12", "name": "Drake" }] },
+            { "id": "east-r64-4", "teams": [{ "seed": "4", "name": "Auburn" }, { "seed": "13", "name": "Liberty" }] },
+            { "id": "east-r64-5", "teams": [{ "seed": "6", "name": "Wisconsin" }, { "seed": "11", "name": "Nevada" }] },
+            { "id": "east-r64-6", "teams": [{ "seed": "3", "name": "Baylor" }, { "seed": "14", "name": "Colgate" }] },
+            { "id": "east-r64-7", "teams": [{ "seed": "7", "name": "Texas A&M" }, { "seed": "10", "name": "Seton Hall" }] },
+            { "id": "east-r64-8", "teams": [{ "seed": "2", "name": "Kansas" }, { "seed": "15", "name": "Eastern Washington" }] }
+          ]
+        },
+        { "name": "Second Round", "matches": [] },
+        { "name": "Sweet 16", "matches": [] },
+        { "name": "Elite 8", "matches": [] }
+      ]
+    },
+    {
+      "name": "West",
+      "rounds": [
+        {
+          "name": "First Round",
+          "matches": [
+            { "id": "west-r64-1", "teams": [{ "seed": "1", "name": "Arizona" }, { "seed": "16", "name": "Montana State" }] },
+            { "id": "west-r64-2", "teams": [{ "seed": "8", "name": "San Diego State" }, { "seed": "9", "name": "Oklahoma" }] },
+            { "id": "west-r64-3", "teams": [{ "seed": "5", "name": "Illinois" }, { "seed": "12", "name": "Grand Canyon" }] },
+            { "id": "west-r64-4", "teams": [{ "seed": "4", "name": "Tennessee" }, { "seed": "13", "name": "Yale" }] },
+            { "id": "west-r64-5", "teams": [{ "seed": "6", "name": "Marquette" }, { "seed": "11", "name": "VCU" }] },
+            { "id": "west-r64-6", "teams": [{ "seed": "3", "name": "Gonzaga" }, { "seed": "14", "name": "South Dakota State" }] },
+            { "id": "west-r64-7", "teams": [{ "seed": "7", "name": "Texas" }, { "seed": "10", "name": "Boise State" }] },
+            { "id": "west-r64-8", "teams": [{ "seed": "2", "name": "UConn" }, { "seed": "15", "name": "Longwood" }] }
+          ]
+        },
+        { "name": "Second Round", "matches": [] },
+        { "name": "Sweet 16", "matches": [] },
+        { "name": "Elite 8", "matches": [] }
+      ]
+    },
+    {
+      "name": "South",
+      "rounds": [
+        {
+          "name": "First Round",
+          "matches": [
+            { "id": "south-r64-1", "teams": [{ "seed": "1", "name": "Houston" }, { "seed": "16", "name": "Howard" }] },
+            { "id": "south-r64-2", "teams": [{ "seed": "8", "name": "Iowa" }, { "seed": "9", "name": "Mississippi State" }] },
+            { "id": "south-r64-3", "teams": [{ "seed": "5", "name": "Miami" }, { "seed": "12", "name": "UAB" }] },
+            { "id": "south-r64-4", "teams": [{ "seed": "4", "name": "Alabama" }, { "seed": "13", "name": "Vermont State" }] },
+            { "id": "south-r64-5", "teams": [{ "seed": "6", "name": "Saint Mary's" }, { "seed": "11", "name": "Providence" }] },
+            { "id": "south-r64-6", "teams": [{ "seed": "3", "name": "Kentucky" }, { "seed": "14", "name": "UNC Wilmington" }] },
+            { "id": "south-r64-7", "teams": [{ "seed": "7", "name": "Colorado" }, { "seed": "10", "name": "Florida" }] },
+            { "id": "south-r64-8", "teams": [{ "seed": "2", "name": "Purdue" }, { "seed": "15", "name": "Wagner" }] }
+          ]
+        },
+        { "name": "Second Round", "matches": [] },
+        { "name": "Sweet 16", "matches": [] },
+        { "name": "Elite 8", "matches": [] }
+      ]
+    },
+    {
+      "name": "Midwest",
+      "rounds": [
+        {
+          "name": "First Round",
+          "matches": [
+            { "id": "midwest-r64-1", "teams": [{ "seed": "1", "name": "North Carolina" }, { "seed": "16", "name": "Northern Kentucky" }] },
+            { "id": "midwest-r64-2", "teams": [{ "seed": "8", "name": "TCU" }, { "seed": "9", "name": "Memphis" }] },
+            { "id": "midwest-r64-3", "teams": [{ "seed": "5", "name": "Michigan State" }, { "seed": "12", "name": "Liberty Tech" }] },
+            { "id": "midwest-r64-4", "teams": [{ "seed": "4", "name": "UCLA" }, { "seed": "13", "name": "Akron" }] },
+            { "id": "midwest-r64-5", "teams": [{ "seed": "6", "name": "Indiana" }, { "seed": "11", "name": "New Mexico" }] },
+            { "id": "midwest-r64-6", "teams": [{ "seed": "3", "name": "Iowa State" }, { "seed": "14", "name": "Toledo" }] },
+            { "id": "midwest-r64-7", "teams": [{ "seed": "7", "name": "Arkansas" }, { "seed": "10", "name": "Dayton" }] },
+            { "id": "midwest-r64-8", "teams": [{ "seed": "2", "name": "Villanova" }, { "seed": "15", "name": "Columbia" }] }
+          ]
+        },
+        { "name": "Second Round", "matches": [] },
+        { "name": "Sweet 16", "matches": [] },
+        { "name": "Elite 8", "matches": [] }
+      ]
+    }
+  ],
+  "finalFour": [
+    { "id": "ff-1", "teams": [] },
+    { "id": "ff-2", "teams": [] }
+  ],
+  "championship": {
+    "id": "championship",
+    "teams": [],
+    "winner": {
+      "seed": "1",
+      "name": "UConn"
+    }
+  }
+}
