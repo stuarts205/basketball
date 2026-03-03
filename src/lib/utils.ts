@@ -96,11 +96,16 @@ export function buildInitialState() {
   });
 
   // Championship winner (type-safe)
-  const winnerObj = mockBracket.championship.winner;
-  const championshipWinner: Team | null =
-    winnerObj && winnerObj.seed && winnerObj.name
-      ? { seed: Number(winnerObj.seed), name: winnerObj.name }
-      : null;
+  let championshipWinner: Team | null = null;
+  if (
+    mockBracket.championship &&
+    (mockBracket.championship as any).winner &&
+    (mockBracket.championship as any).winner.seed &&
+    (mockBracket.championship as any).winner.name
+  ) {
+    const winnerObj = (mockBracket.championship as any).winner;
+    championshipWinner = { seed: Number(winnerObj.seed), name: winnerObj.name };
+  }
 
   const championship: Match = {
     id: mockBracket.championship.id,
