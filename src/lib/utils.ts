@@ -66,11 +66,9 @@ export function buildInitialState() {
     };
   });
 
-  // Final Four (two semifinals)
   const ff: Match[] = mockBracket.finalFour.map((m: any, i: number): Match => {
-    // Determine the team for this semifinal from Elite 8 winners
-    const regionIndexTop = i === 0 ? 0 : 2; // South or East region for top FF slot
-    const regionIndexBottom = i === 0 ? 1 : 3; // West or Midwest region for bottom FF slot
+    const regionIndexTop = i === 0 ? 0 : 2; 
+    const regionIndexBottom = i === 0 ? 1 : 3; 
 
     const topRegionWinner: Team | null = regions[regionIndexTop].rounds[3].matches[0].winner
       ? {
@@ -95,7 +93,6 @@ export function buildInitialState() {
     };
   });
 
-  // Championship winner (type-safe)
   let championshipWinner: Team | null = null;
   if (
     mockBracket.championship &&
