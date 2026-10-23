@@ -1,5 +1,7 @@
 import { CARD_H, CARD_W, Match, ROW_H, Team } from "@/lib/types";
+import Image from "next/image";
 import React from "react";
+import { getTeamLogoUrl } from "@/lib/team-logos";
 
 export const MatchCard = ({
   match,
@@ -12,10 +14,10 @@ export const MatchCard = ({
 }) => {
   return (
     <div
-      className="shrink-0 bg-white rounded-lg shadow-md overflow-hidden border border-gray-200"
+      className="shrink-0 flex flex-col justify-center bg-white rounded-lg shadow-md overflow-hidden"
       style={{ width, height: CARD_H }}
     >
-      <div
+      {/* <div
         className="px-3 pt-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider"
         style={{ height: CARD_H - ROW_H * 2 }}
       >
@@ -24,10 +26,11 @@ export const MatchCard = ({
           : match.status === "live"
             ? "Live"
             : ""}
-      </div>
+      </div> */}
       {match.teams.map((team, i) => {
         const isWinner = team != null && match.winner?.name === team.name;
         const score = match.score[i];
+        const logoUrl = team ? getTeamLogoUrl(team.name) : undefined;
         return (
           <button
             key={i}
@@ -35,7 +38,8 @@ export const MatchCard = ({
             disabled={!team}
             style={{ height: ROW_H, width: "100%" }}
             className={[
-              "flex items-center gap-2 px-3 text-left transition-colors border-t border-gray-100",
+              "flex items-center gap-2 px-3 text-left transition-colors",
+              i > 0 ? "border-t border-gray-100" : "",
               isWinner ? "font-bold text-gray-900" : "text-gray-400",
               team && !isWinner ? "hover:bg-gray-50 cursor-pointer" : "",
               !team ? "cursor-default" : "",
@@ -46,9 +50,16 @@ export const MatchCard = ({
             >
               {team?.seed ?? ""}
             </span>
-            <span className="flex-1 truncate text-sm">
-              {team?.name ?? "TBD"}
-            </span>
+            {logoUrl && (
+              <Image
+                src={logoUrl}
+                alt=""
+                width={16}
+                height={16}
+                className="h-4 w-4 shrink-0 object-contain"
+              />
+            )}
+            <span className="flex-1 truncate text-sm">{team?.name ?? ""}</span>
             {score != null && (
               <span
                 className={`text-sm tabular-nums ${isWinner ? "text-gray-900" : "text-gray-400"}`}
