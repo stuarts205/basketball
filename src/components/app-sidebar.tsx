@@ -1,7 +1,8 @@
 "use client";
+import { CopyPicksModal } from "@/components/copy-picks-modal";
 import { GroupPickerModal } from "@/components/group-picker-modal";
 import { authClient } from "@/lib/auth-client";
-import { GroupSummary, UserGroup } from "@/lib/types";
+import { GroupSummary, PickSource, UserGroup } from "@/lib/types";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
@@ -37,6 +38,9 @@ export const AppSidebar = ({
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [copyPrompt, setCopyPrompt] = useState<SwitchedToEmptyGroup | null>(
+    null,
+  );
 
   return (
     <>
@@ -57,7 +61,7 @@ export const AppSidebar = ({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col bg-[#2f3d68] text-white transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col bg-sideline-900 text-white transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="flex items-center gap-3 border-b border-white/15 px-5 py-5">
           <BasketballIcon />
@@ -73,7 +77,7 @@ export const AppSidebar = ({
                 href={href}
                 onClick={() => setOpen(false)}
                 aria-current={active ? "page" : undefined}
-                className={`flex items-center gap-3 rounded px-3 py-2 text-sm font-semibold ${active ? "bg-white/15 text-white" : "text-white/75 hover:bg-white/10 hover:text-white"}`}
+                className={`flex items-center gap-3 rounded px-3 py-2 text-sm font-semibold ${active ? "bg-ball-500/20 text-ball-300 shadow-[inset_3px_0_0_var(--color-ball-500)]" : "text-white/75 hover:bg-white/10 hover:text-white"}`}
               >
                 <Icon />
                 {label}
@@ -91,6 +95,10 @@ export const AppSidebar = ({
               setOpen(false);
               setJoining(true);
             }}
+            onSwitchedToEmptyGroup={(prompt) => {
+              setOpen(false);
+              setCopyPrompt(prompt);
+            }}
           />
         </div>
       </aside>
@@ -105,8 +113,23 @@ export const AppSidebar = ({
           onClose={() => setJoining(false)}
         />
       )}
+      {copyPrompt && (
+        <CopyPicksModal
+          groupId={copyPrompt.group.id}
+          groupName={copyPrompt.group.name}
+          sources={copyPrompt.sources}
+          defaultSourceId={copyPrompt.previousGroupId}
+          onClose={() => setCopyPrompt(null)}
+        />
+      )}
     </>
   );
+};
+
+type SwitchedToEmptyGroup = {
+  group: UserGroup;
+  sources: PickSource[];
+  previousGroupId: string | null;
 };
 
 const UserMenu = ({
@@ -114,11 +137,15 @@ const UserMenu = ({
   groups,
   activeGroupId,
   onJoinGroup,
+  onSwitchedToEmptyGroup,
 }: {
   userName: string;
   groups: UserGroup[];
   activeGroupId: string | null;
   onJoinGroup: () => void;
+  // Called when the user has no picks in the group they switched to but has
+  // a bracket in another group they could copy.
+  onSwitchedToEmptyGroup: (prompt: SwitchedToEmptyGroup) => void;
 }) => {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -152,12 +179,18 @@ const UserMenu = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ groupId }),
       });
-      if (!response.ok) {
-        const body = await response.json();
-        throw new Error(body.error ?? "Could not switch group");
-      }
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Could not switch group");
+      const { group, picksFrom }: { group: UserGroup; picksFrom: PickSource[] } =
+        body;
       setOpen(false);
       router.refresh();
+      if (picksFrom.length)
+        onSwitchedToEmptyGroup({
+          group,
+          sources: picksFrom,
+          previousGroupId: activeGroupId,
+        });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not switch group");
     } finally {
@@ -178,7 +211,7 @@ const UserMenu = ({
       {open && (
         <div
           role="menu"
-          className="absolute inset-x-0 bottom-full mb-2 rounded-lg border border-white/15 bg-[#26325a] p-1 shadow-lg"
+          className="absolute inset-x-0 bottom-full mb-2 rounded-lg border border-white/15 bg-sideline-800 p-1 shadow-lg"
         >
           <div className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-white/50">
             Your groups
@@ -254,7 +287,7 @@ const UserMenu = ({
         aria-haspopup="menu"
         className="flex w-full items-center gap-3 rounded-lg border border-white/15 bg-white/10 px-3 py-3 text-left hover:bg-white/15"
       >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-semibold">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ball-500 text-sm font-semibold">
           {initials(userName)}
         </span>
         <span className="min-w-0 flex-1">
@@ -273,7 +306,7 @@ const UserMenu = ({
 
 function BasketballIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden>
+    <svg viewBox="0 0 24 24" className="h-8 w-8 text-ball-500" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden>
       <circle cx="12" cy="12" r="9.5" />
       <path d="M2.5 12h19M12 2.5v19M5.3 5.3c3.2 3.2 3.2 10.2 0 13.4M18.7 5.3c-3.2 3.2-3.2 10.2 0 13.4" />
     </svg>

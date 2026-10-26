@@ -49,13 +49,13 @@ export const FinalFourCenter = ({
         <path
           d={`M ${leftSemifinal + FF_W} ${champCenterY} H ${championshipLeft}`}
           fill="none"
-          stroke="#9ca3af"
+          stroke="#b8a48a"
           strokeWidth={1.75}
         />
         <path
           d={`M ${rightSemifinal} ${champCenterY} H ${championshipLeft + championshipWidth}`}
           fill="none"
-          stroke="#9ca3af"
+          stroke="#b8a48a"
           strokeWidth={1.75}
         />
       </svg>

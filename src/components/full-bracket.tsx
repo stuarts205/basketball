@@ -1,6 +1,13 @@
 "use client";
 import { BracketState, DESKTOP_REGION_GAP, Match, Team } from "@/lib/types";
-import React, { useLayoutEffect, useRef, useState } from "react";
+import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  SimResults,
+  SimScores,
+  applyResults,
+  simulateResults,
+} from "@/lib/simulate";
+import { BracketScore, scoreBracket } from "@/lib/scoring";
 import { RegionBracket } from "./region-bracket";
 import { ChampionCard } from "./champion-card";
 import { MatchCard } from "./match-card";
@@ -10,13 +17,40 @@ import { RegionBracketMirrored } from "./region-bracket-mirrored";
 export const FullBracket = ({
   initialState,
   groupId,
+  groupName,
+  espnResults,
 }: {
   initialState: BracketState;
   // The group whose bracket is shown; picks are saved only with one.
   groupId: string | null;
+  groupName: string | null;
+  // Real results from the saved ESPN bracket, if there is one.
+  espnResults: SimResults | null;
 }) => {
   const canEdit = groupId !== null;
   const [state, setState] = useState(initialState);
+  // A server refresh (e.g. after copying picks in) replaces local state.
+  const [syncedInitialState, setSyncedInitialState] = useState(initialState);
+  if (initialState !== syncedInitialState) {
+    setSyncedInitialState(initialState);
+    setState(initialState);
+  }
+  // Results shown over the picks; they live only in the browser, nothing is saved.
+  const [results, setResults] = useState<{
+    source: "espn" | "sim";
+    winners: SimResults;
+    scores?: SimScores;
+  } | null>(espnResults ? { source: "espn", winners: espnResults } : null);
+  const shown = useMemo(
+    () =>
+      results ? applyResults(state, results.winners, results.scores) : state,
+    [state, results],
+  );
+  const score = useMemo(
+    () => (results ? scoreBracket(shown) : null),
+    [shown, results],
+  );
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const resetRef = useRef(false);
@@ -116,37 +150,137 @@ export const FullBracket = ({
 
   return (
     <div className="w-full">
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap justify-end gap-2">
+        {espnResults && (
+          <button
+            type="button"
+            aria-pressed={results?.source === "espn"}
+            onClick={() =>
+              setResults({ source: "espn", winners: espnResults })
+            }
+            className="rounded-full border-2 border-gray-300 bg-white px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-gray-700 shadow-sm transition-colors hover:bg-gray-100 aria-pressed:border-gray-800 aria-pressed:bg-gray-800 aria-pressed:text-white"
+          >
+            ESPN Results
+          </button>
+        )}
         <button
           type="button"
-          onClick={handleResetPicks}
-          disabled={!canEdit || resetting || saving}
-          className="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-50"
+          aria-pressed={results?.source === "sim"}
+          onClick={() =>
+            setResults({ source: "sim", ...simulateResults(state) })
+          }
+          className="rounded-full border-2 border-gray-300 bg-white px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-gray-700 shadow-sm transition-colors hover:bg-gray-100 aria-pressed:border-gray-800 aria-pressed:bg-gray-800 aria-pressed:text-white"
         >
-          {resetting ? "Resetting..." : "Reset Picks"}
+          {results?.source === "sim" ? "Re-simulate" : "Simulate Results"}
         </button>
+        {results && (
+          <button
+            type="button"
+            onClick={() => setResults(null)}
+            className="rounded-full px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-gray-500 hover:bg-gray-100"
+          >
+            Hide Results
+          </button>
+        )}
+        {/* Reset wipes the whole bracket, so it takes a second click to confirm. */}
+        {confirmingReset ? (
+          <div
+            role="group"
+            aria-label="Confirm reset"
+            className="flex items-center gap-2 rounded-full border border-red-200 bg-white py-1 pl-4 pr-1 text-sm shadow-sm"
+          >
+            <span className="text-gray-800">
+              Clear your picks for{" "}
+              <span className="font-semibold">{groupName ?? "this group"}</span>
+              ? Other groups won&apos;t change.
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmingReset(false);
+                handleResetPicks();
+              }}
+              className="rounded-full bg-red-600 px-3 py-1.5 font-semibold text-white hover:bg-red-700"
+            >
+              Yes, reset
+            </button>
+            <button
+              type="button"
+              autoFocus
+              onClick={() => setConfirmingReset(false)}
+              className="rounded-full px-3 py-1.5 font-semibold text-gray-600 hover:bg-gray-100"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmingReset(true)}
+            disabled={!canEdit || resetting || saving}
+            title={canEdit ? undefined : "Join a group to make picks"}
+            className="group flex items-center gap-2 rounded-full border-2 border-ball-500 bg-white px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-ball-600 shadow-sm transition-colors hover:bg-ball-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white disabled:hover:text-ball-600"
+          >
+            <ResetIcon spinning={resetting} />
+            {resetting ? "Resetting..." : "Reset Picks"}
+          </button>
+        )}
       </div>
+      {score && (
+        <ScoreSummary
+          score={score}
+          label={results?.source === "espn" ? "ESPN score" : "Simulated score"}
+        />
+      )}
       {(resetError || saveError) && (
         <p role="alert" className="mb-4 text-sm text-red-700">
           {resetError ?? saveError}
         </p>
       )}
+      {!!shown.firstFour?.length && (
+        <section
+          aria-label="First Four"
+          aria-busy={saving}
+          className="mb-8 border-b border-gray-200 pb-6"
+        >
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-gray-600">
+            First Four
+          </h2>
+          <fieldset
+            disabled={saving}
+            className="grid min-w-0 grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4"
+          >
+            {shown.firstFour.map((match) => (
+              <div key={match.id} className="min-w-0">
+                <div className="mb-2 text-xs font-bold text-gray-500">
+                  {match.region}
+                </div>
+                <MatchCard
+                  match={match}
+                  onSelectTeam={handleSelectTeam}
+                  width="100%"
+                />
+              </div>
+            ))}
+          </fieldset>
+        </section>
+      )}
       {/* ── MOBILE: stacked regions, no mirroring ── */}
       <div className="flex flex-col gap-10 lg:hidden overflow-x-auto">
         <RegionBracket
-          region={state.regions[0]}
+          region={shown.regions[0]}
           onSelectTeam={handleSelectTeam}
         />
         <RegionBracket
-          region={state.regions[1]}
+          region={shown.regions[1]}
           onSelectTeam={handleSelectTeam}
         />
         <RegionBracket
-          region={state.regions[2]}
+          region={shown.regions[2]}
           onSelectTeam={handleSelectTeam}
         />
         <RegionBracket
-          region={state.regions[3]}
+          region={shown.regions[3]}
           onSelectTeam={handleSelectTeam}
         />
 
@@ -159,12 +293,12 @@ export const FullBracket = ({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <MatchCard
-              match={state.ff[0]}
+              match={shown.ff[0]}
               onSelectTeam={handleSelectTeam}
               width="100%"
             />
             <MatchCard
-              match={state.ff[1]}
+              match={shown.ff[1]}
               onSelectTeam={handleSelectTeam}
               width="100%"
             />
@@ -178,7 +312,7 @@ export const FullBracket = ({
               <path
                 d="M 25 0 V 16 H 50 V 32 M 75 0 V 16 H 50"
                 fill="none"
-                stroke="#9ca3af"
+                stroke="#b8a48a"
                 strokeWidth="1.75"
                 strokeLinejoin="round"
               />
@@ -186,13 +320,13 @@ export const FullBracket = ({
           </div>
           <div className="w-full">
             <MatchCard
-              match={state.championship}
+              match={shown.championship}
               onSelectTeam={handleSelectTeam}
               width="100%"
             />
           </div>
-          {state.championship.winner && (
-            <ChampionCard team={state.championship.winner} width="100%" />
+          {shown.championship.winner && (
+            <ChampionCard team={shown.championship.winner} width="100%" />
           )}
         </div>
       </div>
@@ -227,19 +361,19 @@ export const FullBracket = ({
             style={{ gap: DESKTOP_REGION_GAP }}
           >
             <RegionBracket
-              region={state.regions[0]}
+              region={shown.regions[0]}
               onSelectTeam={handleSelectTeam}
             />
             <RegionBracket
-              region={state.regions[1]}
+              region={shown.regions[1]}
               onSelectTeam={handleSelectTeam}
             />
           </div>
 
           {/* CENTER: Final Four */}
           <FinalFourCenter
-            ff={state.ff}
-            championship={state.championship}
+            ff={shown.ff}
+            championship={shown.championship}
             onSelectTeam={handleSelectTeam}
           />
 
@@ -249,44 +383,75 @@ export const FullBracket = ({
             style={{ gap: DESKTOP_REGION_GAP }}
           >
             <RegionBracketMirrored
-              region={state.regions[2]}
+              region={shown.regions[2]}
               onSelectTeam={handleSelectTeam}
             />
             <RegionBracketMirrored
-              region={state.regions[3]}
+              region={shown.regions[3]}
               onSelectTeam={handleSelectTeam}
             />
           </div>
         </div>
       </div>
-      {!!state.firstFour?.length && (
-        <section
-          aria-label="First Four"
-          aria-busy={saving}
-          className="mt-12 border-t border-gray-200 pt-6"
-        >
-          <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-gray-600">
-            First Four
-          </h2>
-          <fieldset
-            disabled={saving}
-            className="grid min-w-0 grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4"
-          >
-            {state.firstFour.map((match) => (
-              <div key={match.id} className="min-w-0">
-                <div className="mb-2 text-xs font-bold text-gray-500">
-                  {match.region}
-                </div>
-                <MatchCard
-                  match={match}
-                  onSelectTeam={handleSelectTeam}
-                  width="100%"
-                />
-              </div>
-            ))}
-          </fieldset>
-        </section>
-      )}
     </div>
   );
 };
+
+function ScoreSummary({
+  score,
+  label,
+}: {
+  score: BracketScore;
+  label: string;
+}) {
+  return (
+    <section
+      aria-label={label}
+      className="mb-6 rounded-lg bg-white p-4 shadow-md"
+    >
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-2">
+        <span className="text-xs font-bold uppercase tracking-widest text-gray-500">
+          {label}
+        </span>
+        <span className="text-2xl font-black tabular-nums text-gray-900">
+          {score.points}
+        </span>
+        <span className="text-sm tabular-nums text-gray-400">
+          / {score.maxPoints} pts
+        </span>
+      </div>
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {score.rounds.map((round) => (
+          <div key={round.name} className="min-w-0">
+            <dt className="truncate text-[11px] font-bold uppercase tracking-wide text-gray-500">
+              {round.name}
+            </dt>
+            <dd className="tabular-nums">
+              <span className="font-bold text-gray-900">{round.points}</span>
+              <span className="text-xs text-gray-400">
+                {" "}
+                pts · {round.correct}/{round.games} correct
+              </span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function ResetIcon({ spinning }: { spinning: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={`h-4 w-4 shrink-0 transition-transform ${spinning ? "animate-spin" : "group-hover:-rotate-90"}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+      aria-hidden
+    >
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
+  );
+}

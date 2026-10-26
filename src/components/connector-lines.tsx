@@ -45,14 +45,14 @@ export const ConnectorLines = ({
         <path
           d={`M ${sourceX} ${yA} H ${xMid} V ${yDest} H ${destinationX}`}
           fill="none"
-          stroke="#9ca3af"
+          stroke="#b8a48a"
           strokeWidth={1.75}
           strokeLinejoin="round"
         />
         <path
           d={`M ${sourceX} ${yB} H ${xMid} V ${yDest} H ${destinationX}`}
           fill="none"
-          stroke="#9ca3af"
+          stroke="#b8a48a"
           strokeWidth={1.75}
           strokeLinejoin="round"
         />

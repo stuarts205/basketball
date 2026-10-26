@@ -60,6 +60,9 @@ export const groups = pgTable(
       onDelete: "set null",
     }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    // Private groups require join_pin to join; public groups have no PIN.
+    isPrivate: boolean("is_private").default(false).notNull(),
+    joinPin: text("join_pin"),
   },
   (table) => [uniqueIndex("groups_name_lower_idx").on(sql`lower(${table.name})`)],
 );

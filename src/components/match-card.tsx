@@ -23,15 +23,8 @@ export const MatchCard = ({
           style={{ height: CARD_H - ROW_H * 2 - 2 }}
         >
           <span className="min-w-0 truncate text-gray-500">
-            Sim: {match.actualWinner.name}
+            Winner: {match.actualWinner.name}
           </span>
-          {match.winner && (
-            <span
-              className={`shrink-0 font-bold ${match.winner.name === match.actualWinner.name ? "text-green-700" : "text-red-600"}`}
-            >
-              {match.winner.name === match.actualWinner.name ? "OK" : "MISS"}
-            </span>
-          )}
         </div>
       )}
       {/* <div
@@ -55,15 +48,14 @@ export const MatchCard = ({
         const isWinner = team != null && match.winner?.name === team.name;
         const isActualWinner =
           team != null && match.actualWinner?.name === team.name;
-        const isActualLoser =
-          team != null &&
-          match.actualWinner != null &&
-          match.actualTeams?.some(
-            (actualTeam) => actualTeam?.name === team.name,
-          ) &&
-          !isActualWinner;
+        const isCorrectPick = isWinner && isActualWinner;
         const isMissedPick =
           isWinner && match.actualWinner != null && !isActualWinner;
+        // A team the user advanced here that was knocked out in an earlier game.
+        const actualTeam = match.actualTeams?.[i];
+        const isEliminated =
+          team != null && actualTeam != null && actualTeam.name !== team.name;
+        const isStruck = isMissedPick || isEliminated;
         const score = match.score[i];
         const logoUrl = team
           ? team.logo || getTeamLogoUrl(team.name)
@@ -78,14 +70,11 @@ export const MatchCard = ({
             className={[
               "flex items-center gap-2 px-3 text-left transition-colors",
               i > 0 ? "border-t border-gray-100" : "",
-              isMissedPick
-                ? "font-bold text-red-700"
-                : isActualWinner
-                  ? "font-bold text-green-800"
-                  : isWinner
+              isCorrectPick
+                ? "font-bold text-green-700"
+                : isWinner
                     ? "font-bold text-gray-900"
                     : "text-gray-400",
-              isActualLoser ? "opacity-60" : "",
               team && !isWinner ? "hover:bg-gray-50 cursor-pointer" : "",
               !team ? "cursor-default" : "",
             ].join(" ")}
@@ -105,21 +94,30 @@ export const MatchCard = ({
               />
             )}
             <span
-              className={`min-w-0 flex-1 ${pendingTeams ? "text-[10px] leading-3 whitespace-normal break-words text-gray-500" : "truncate text-sm"} ${isActualLoser ? "line-through" : ""}`}
+              className={`min-w-0 flex-1 ${pendingTeams ? "text-[10px] leading-3 whitespace-normal break-words text-gray-500" : "truncate text-sm"}`}
             >
               {teamName}
             </span>
-            {isWinner && match.actualWinner && (
+            {isStruck ? (
               <span
-                aria-label={isMissedPick ? "Pick missed" : "Correct pick"}
-                className={`shrink-0 text-sm font-bold ${isMissedPick ? "text-red-600" : "text-green-600"}`}
+                aria-label="Pick missed"
+                className="shrink-0 text-sm font-bold text-red-600"
               >
-                {isMissedPick ? "×" : "✓"}
+                ✕
               </span>
+            ) : (
+              isCorrectPick && (
+                <span
+                  aria-label="Correct pick"
+                  className="shrink-0 text-sm font-bold text-green-600"
+                >
+                  ✓
+                </span>
+              )
             )}
             {score != null && (
               <span
-                className={`text-sm tabular-nums ${isWinner ? "text-gray-900" : "text-gray-400"}`}
+                className={`shrink-0 text-sm tabular-nums ${(match.actualWinner ? isActualWinner : isWinner) ? "font-bold text-gray-900" : "font-normal text-gray-400"}`}
               >
                 {score}
               </span>

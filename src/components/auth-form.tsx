@@ -64,7 +64,7 @@ export const AuthForm = () => {
               autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-gray-500 focus:outline-none"
+              className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-ball-500 focus:outline-none focus:ring-2 focus:ring-ball-500/20"
             />
           </label>
         )}
@@ -76,7 +76,7 @@ export const AuthForm = () => {
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-gray-500 focus:outline-none"
+            className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-ball-500 focus:outline-none focus:ring-2 focus:ring-ball-500/20"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm font-semibold text-gray-700">
@@ -88,7 +88,7 @@ export const AuthForm = () => {
             autoComplete={isSignUp ? "new-password" : "current-password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-gray-500 focus:outline-none"
+            className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-ball-500 focus:outline-none focus:ring-2 focus:ring-ball-500/20"
           />
         </label>
         {error && (
@@ -99,7 +99,7 @@ export const AuthForm = () => {
         <button
           type="submit"
           disabled={submitting}
-          className="rounded bg-gray-800 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-700 disabled:cursor-wait disabled:opacity-50"
+          className="rounded bg-ball-500 px-3 py-2 text-sm font-semibold text-white hover:bg-ball-600 disabled:cursor-wait disabled:opacity-50"
         >
           {submitting
             ? isSignUp

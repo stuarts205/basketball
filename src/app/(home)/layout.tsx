@@ -30,7 +30,7 @@ export default async function HomeLayout({
   const joinableGroups = allGroups.filter((group) => !joinedIds.has(group.id));
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
+    <div className="flex min-h-screen bg-court">
       <AppSidebar
         userName={session.user.name || session.user.email}
         groups={userGroups}

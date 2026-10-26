@@ -1,13 +1,15 @@
 import { auth } from "@/lib/auth";
 import {
-  ACTIVE_GROUP_COOKIE,
-  ACTIVE_GROUP_COOKIE_OPTIONS,
   UUID_PATTERN,
   findUserGroup,
+  pickSourcesFor,
+  setActiveGroupCookies,
 } from "@/lib/groups";
 import { cookies } from "next/headers";
 
 // Switches the signed-in user's active group to one they already belong to.
+// picksFrom lists the user's other brackets when the new group has none, so
+// the client can offer to copy one.
 export async function PUT(request: Request) {
   try {
     const session = await auth.api.getSession({ headers: request.headers });
@@ -37,12 +39,9 @@ export async function PUT(request: Request) {
         { status: 404 },
       );
 
-    (await cookies()).set(
-      ACTIVE_GROUP_COOKIE,
-      group.id,
-      ACTIVE_GROUP_COOKIE_OPTIONS,
-    );
-    return Response.json({ group });
+    setActiveGroupCookies(await cookies(), group.id, session.session.id);
+    const picksFrom = await pickSourcesFor(session.user.id, group.id);
+    return Response.json({ group, picksFrom });
   } catch (error) {
     console.error("Could not switch group", error);
     return Response.json({ error: "Could not switch group" }, { status: 500 });

@@ -1,15 +1,16 @@
 import { auth } from "@/lib/auth";
 import {
-  ACTIVE_GROUP_COOKIE,
-  ACTIVE_GROUP_COOKIE_OPTIONS,
   UUID_PATTERN,
   joinGroup,
   parseCopyPicksFrom,
+  parsePin,
+  setActiveGroupCookies,
 } from "@/lib/groups";
 import { cookies } from "next/headers";
 
 // Joins the signed-in user to the group as a member and makes it their
-// active group. Body (optional): { copyPicksFrom?: groupId }.
+// active group. Body (optional): { copyPicksFrom?: groupId, pin?: string };
+// pin is required for private groups.
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ groupId: string }> },
@@ -34,18 +35,22 @@ export async function POST(
         { status: 400 },
       );
 
+    // A malformed PIN can never match, so it is treated as a wrong one.
+    const pin = parsePin(body);
+
     const { groupId } = await params;
     const group = UUID_PATTERN.test(groupId)
-      ? await joinGroup(session.user.id, groupId, copyPicksFrom)
+      ? await joinGroup(session.user.id, groupId, copyPicksFrom, pin ?? undefined)
       : null;
     if (!group)
       return Response.json({ error: "Group not found" }, { status: 404 });
+    if (group === "wrong-pin")
+      return Response.json(
+        { error: "Incorrect PIN for this private group" },
+        { status: 403 },
+      );
 
-    (await cookies()).set(
-      ACTIVE_GROUP_COOKIE,
-      group.id,
-      ACTIVE_GROUP_COOKIE_OPTIONS,
-    );
+    setActiveGroupCookies(await cookies(), group.id, session.session.id);
     return Response.json({ group });
   } catch (error) {
     console.error("Could not join group", error);

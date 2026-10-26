@@ -48,8 +48,15 @@ Any signed-in user can create a group; the creator is stored in
 `group_members` with the `admin` role. Group names are unique regardless of case.
 Signed-in users who belong to no group see a modal on `/bracket` that lists
 existing groups to join or lets them create one. Routes: `GET /api/groups`,
-`POST /api/groups` (`{ name, copyPicksFrom? }`), and
-`POST /api/groups/:groupId/members` (join, `{ copyPicksFrom? }`).
+`POST /api/groups` (`{ name, copyPicksFrom?, isPrivate?, pin? }`), and
+`POST /api/groups/:groupId/members` (join, `{ copyPicksFrom?, pin? }`).
+
+When creating a group the admin chooses **public** (anyone can join) or
+**private**. A private group requires a 4-8 digit PIN that the admin shares
+with people they invite; joining without the right PIN returns 403. Existing
+members never need the PIN again. The PIN is stored in `groups.join_pin` and
+is never returned by the API. Run `npx drizzle-kit push` to add the
+`is_private` and `join_pin` columns; existing groups stay public.
 
 Picks are stored per user **per group**: `picks` is keyed by
 `(user_id, group_id, game_id)` and references `group_members`, so a user's
@@ -59,6 +66,15 @@ group deletes that group's picks. `/bracket` shows the active group's bracket;
 `DELETE /api/games/winner?groupId=...` resets one group's bracket. When a user
 who already belongs to a group joins or creates another, they choose to start
 a fresh bracket (the default) or copy their picks from one of their groups.
+Switching (`PUT /api/groups/active`) to a group where the user has no picks
+returns `picksFrom`, their other groups with picks; the sidebar then offers to
+copy one of those brackets (`POST /api/groups/:groupId/picks`,
+`{ copyFrom }`) or make fresh picks. Copying only fills an empty bracket.
+
+Users who belong to more than one group choose which group's bracket to open
+each time they sign in. The chooser lists each group with that bracket's pick
+count and champion pick. The `active_group_session` cookie records the login
+session the active group was chosen in, so a new session asks again.
 
 #### Migrating picks that predate groups
 

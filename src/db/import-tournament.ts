@@ -3,37 +3,17 @@ import { readFile, writeFile } from "node:fs/promises";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { games, teams } from "./schema";
-
-type Competitor = {
-  id: string;
-  name: string;
-  location: string;
-  abbreviation: string;
-  color: string;
-  alternateColor: string;
-  logo: string;
-  seed: string;
-  winner: boolean;
-};
-type Matchup = {
-  id: string;
-  roundId: number;
-  bracketLocation: number;
-  regionId?: number;
-  statusState: string;
-  competitorOne: Competitor;
-  competitorTwo: Competitor;
-};
-type Tournament = {
-  season: number | string;
-  matchups: Matchup[];
-  regions: { id: number; slug: string }[];
-};
+import {
+  Competitor,
+  Matchup,
+  Tournament,
+  gameIdFor,
+  regionFor as espnRegionFor,
+} from "../lib/espn-bracket";
 
 const year = 2026;
 const sourceUrl = `https://www.espn.com/mens-college-basketball/bracket/_/season/${year}`;
 const snapshot = new URL(`../../data/tournament-${year}.json`, import.meta.url);
-const regionOrder = ["East", "South", "West", "Midwest"];
 const season = "2025-26";
 const roundNames = [
   "First Four",
@@ -44,7 +24,6 @@ const roundNames = [
   "Semifinal",
   "Championship",
 ];
-const roundCodes = ["first-four", "r64", "r32", "s16", "e8"];
 
 async function loadTournament(): Promise<Tournament> {
   if (!process.argv.includes("--refresh")) {
@@ -108,21 +87,7 @@ async function main() {
       throw new Error(`Invalid slots for ${roundNames[round]}`);
     }
   }
-  const regionFor = (game: Matchup) => {
-    if (game.roundId >= 5) return null;
-    if (game.roundId === 0) {
-      const slug = bracket.regions.find(
-        (region) => region.id === game.regionId,
-      )?.slug;
-      const region = regionOrder.find((name) => name.toLowerCase() === slug);
-      if (!region)
-        throw new Error(`Unknown First Four region: ${game.regionId}`);
-      return region;
-    }
-    return regionOrder[
-      Math.floor((game.bracketLocation - 1) / (8 / 2 ** (game.roundId - 1)))
-    ];
-  };
+  const regionFor = (game: Matchup) => espnRegionFor(bracket, game);
   const teamRows = new Map<string, typeof teams.$inferInsert>();
   const catalog: {
     sports: {
@@ -251,16 +216,7 @@ async function main() {
       }
       for (const game of sourceGames) {
         const region = regionFor(game);
-        const slotsPerRegion = 8 / 2 ** (game.roundId - 1);
-        const localSlot = (game.bracketLocation - 1) % slotsPerRegion;
-        const gameId =
-          game.roundId === 0
-            ? `first-four-${game.bracketLocation}`
-            : game.roundId === 5
-              ? `ff-${game.bracketLocation}`
-              : game.roundId === 6
-                ? "championship"
-                : `${region!.toLowerCase()}-${roundCodes[game.roundId]}-${game.roundId === 1 ? localSlot + 1 : localSlot}`;
+        const gameId = gameIdFor(bracket, game);
         const isFirstFourSlot = (competitor: Competitor) =>
           game.roundId === 1 &&
           sourceGames.some(

@@ -12,6 +12,48 @@
   --font-mono: var(--font-geist-mono);
 }
 
+@theme {
+  /* Basketball leather orange */
+  --color-ball-300: #fdba8c;
+  --color-ball-400: #f98a45;
+  --color-ball-500: #ee6a1f;
+  --color-ball-600: #d4560f;
+  --color-ball-700: #ad4410;
+
+  /* Maple hardwood court */
+  --color-court-50: #fbf5ea;
+  --color-court-100: #f3e4c8;
+  --color-court-200: #e6cfa4;
+
+  /* Sideline black, used for the sidebar */
+  --color-sideline-800: #2a2320;
+  --color-sideline-900: #1c1715;
+
+  /* Warm grays so neutrals sit well on the hardwood */
+  --color-gray-50: oklch(98.5% 0.001 106.423);
+  --color-gray-100: oklch(97% 0.001 106.424);
+  --color-gray-200: oklch(92.3% 0.003 48.717);
+  --color-gray-300: oklch(86.9% 0.005 56.366);
+  --color-gray-400: oklch(70.9% 0.01 56.259);
+  --color-gray-500: oklch(55.3% 0.013 58.071);
+  --color-gray-600: oklch(44.4% 0.011 73.639);
+  --color-gray-700: oklch(37.4% 0.01 67.558);
+  --color-gray-800: oklch(26.8% 0.007 34.298);
+  --color-gray-900: oklch(21.6% 0.006 56.043);
+}
+
+/* Hardwood floor: maple base with faint plank seams */
+@utility bg-court {
+  background-color: var(--color-court-100);
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 63px,
+      rgb(140 90 40 / 0.07) 63px 64px
+    ),
+    linear-gradient(180deg, var(--color-court-50), var(--color-court-100));
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;

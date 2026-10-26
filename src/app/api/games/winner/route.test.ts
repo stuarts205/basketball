@@ -8,7 +8,9 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { games, groupMembers, groups, picks, teams, user } from "@/db/schema";
 import { auth } from "@/lib/auth";
-import { joinGroup } from "@/lib/groups";
+import {
+  copyPicksIntoEmptyGroup, joinGroup, listBracketChoices, pickSourcesFor,
+} from "@/lib/groups";
 import { bracketMatches, loadBracketFromDatabase } from "@/lib/load-bracket";
 import type { BracketState, Match } from "@/lib/types";
 import { DELETE, PUT } from "./route";
@@ -214,9 +216,18 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
             otherGroupGame.teams[1].name,
           );
           assert.deepEqual((await currentBracket()).state, state);
+          const pickRows = (userId: string, groupId: string) =>
+            tx.select().from(picks).where(
+              and(eq(picks.userId, userId), eq(picks.groupId, groupId)),
+            );
+          assert.equal((await pickRows("user-a", otherGroup)).length, 1);
+          const mainGroupRows = await pickRows("user-a", mainGroup);
           assert.equal((await DELETE(new Request(
             `http://localhost/api/games/winner?groupId=${otherGroup}`, { method: "DELETE" },
           ))).status, 200);
+          // Reset removes the rows themselves, and only for the selected group.
+          assert.equal((await pickRows("user-a", otherGroup)).length, 0);
+          assert.deepEqual(await pickRows("user-a", mainGroup), mainGroupRows);
           assert.deepEqual(
             (await loadBracketFromDatabase(otherOwner, tx)).state, anonymous.state,
           );
@@ -328,9 +339,66 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
             (await loadBracketFromDatabase({ userId: "user-b", groupId: outsiderGroup }, tx)).state,
             anonymous.state,
           );
+
+          // Private groups admit only those with the PIN; members need none.
+          const privateGroup = randomUUID();
+          await tx.insert(groups).values({
+            id: privateGroup, name: "Private", isPrivate: true, joinPin: "4321",
+          });
+          assert.equal(await joinGroup("user-b", privateGroup), "wrong-pin");
+          assert.equal(await joinGroup("user-b", privateGroup, undefined, "1234"), "wrong-pin");
+          assert.equal(
+            (await tx.select().from(groupMembers).where(eq(groupMembers.groupId, privateGroup))).length,
+            0,
+          );
+          assert.deepEqual(
+            await joinGroup("user-b", privateGroup, undefined, "4321"),
+            { id: privateGroup, name: "Private", role: "member" },
+          );
+          assert.deepEqual(
+            await joinGroup("user-b", privateGroup),
+            { id: privateGroup, name: "Private", role: "member" },
+          );
+
           await tx.delete(groupMembers).where(and(
             eq(groupMembers.userId, "user-b"), eq(groupMembers.groupId, otherGroup),
           ));
+
+          // The sign-in group chooser summarizes each of the user's brackets.
+          const choices = await listBracketChoices("user-a", tx);
+          const mainChoice = choices.find((choice) => choice.id === mainGroup);
+          assert.equal(
+            mainChoice?.pickCount,
+            bracketMatches(state).filter((match) => match.winner).length,
+          );
+          assert.equal(mainChoice?.champion, state.championship.winner?.name ?? null);
+          assert.deepEqual(
+            choices.find((choice) => choice.id === otherGroup),
+            { id: otherGroup, name: "Other", role: "member", pickCount: 0, champion: null },
+          );
+
+          // Switching into a group with no picks offers the user's other
+          // brackets; copying fills it once and never merges into picks.
+          assert.deepEqual(
+            (await pickSourcesFor("user-a", otherGroup, tx)).map((source) => source.id).sort(),
+            [mainGroup, copiedGroup].sort(),
+          );
+          assert.deepEqual(await pickSourcesFor("user-a", mainGroup, tx), []);
+          assert.equal(
+            await copyPicksIntoEmptyGroup("user-a", outsiderGroup, otherGroup), "no-source",
+          );
+          assert.equal(
+            await copyPicksIntoEmptyGroup("user-a", mainGroup, outsiderGroup), "not-member",
+          );
+          assert.equal(await copyPicksIntoEmptyGroup("user-a", mainGroup, otherGroup), "copied");
+          assert.deepEqual(
+            (await loadBracketFromDatabase(otherOwner, tx)).state,
+            (await currentBracket()).state,
+          );
+          assert.equal(
+            await copyPicksIntoEmptyGroup("user-a", copiedGroup, otherGroup), "not-empty",
+          );
+          assert.deepEqual(await pickSourcesFor("user-a", otherGroup, tx), []);
           assert.deepEqual(
             (await loadBracketFromDatabase(undefined, tx)).state, anonymous.state,
           );
@@ -351,6 +419,10 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           assert.deepEqual((await response.json()).state, anonymous.state);
           assert.equal((await tx.select().from(picks).where(and(
             eq(picks.userId, "user-a"), eq(picks.gameId, olderGameId),
+          ))).length, 1);
+          // Only the older tournament's row survives in the reset group.
+          assert.equal((await tx.select().from(picks).where(and(
+            eq(picks.userId, "user-a"), eq(picks.groupId, mainGroup),
           ))).length, 1);
           assert.deepEqual((await loadBracketFromDatabase(
             { userId: "user-b", groupId: mainGroup }, tx,

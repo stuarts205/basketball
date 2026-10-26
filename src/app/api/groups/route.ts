@@ -1,10 +1,10 @@
 import { auth } from "@/lib/auth";
 import {
-  ACTIVE_GROUP_COOKIE,
-  ACTIVE_GROUP_COOKIE_OPTIONS,
   createGroup,
   listGroups,
   parseCopyPicksFrom,
+  parsePin,
+  setActiveGroupCookies,
 } from "@/lib/groups";
 import { GROUP_NAME_MAX_LENGTH } from "@/lib/types";
 import { cookies } from "next/headers";
@@ -57,18 +57,36 @@ export async function POST(request: Request) {
         { status: 400 },
       );
 
-    const group = await createGroup(session.user.id, name, copyPicksFrom);
+    // Private groups need a PIN that the admin shares with people they invite.
+    const isPrivate =
+      body && typeof body === "object" && "isPrivate" in body
+        ? body.isPrivate
+        : false;
+    if (typeof isPrivate !== "boolean")
+      return Response.json(
+        { error: "isPrivate must be true or false" },
+        { status: 400 },
+      );
+    const pin = isPrivate ? parsePin(body) : undefined;
+    if (isPrivate && !pin)
+      return Response.json(
+        { error: "Private groups need a PIN of 4-8 digits" },
+        { status: 400 },
+      );
+
+    const group = await createGroup(
+      session.user.id,
+      name,
+      copyPicksFrom,
+      pin ?? undefined,
+    );
     if (!group)
       return Response.json(
         { error: "A group with that name already exists" },
         { status: 409 },
       );
 
-    (await cookies()).set(
-      ACTIVE_GROUP_COOKIE,
-      group.id,
-      ACTIVE_GROUP_COOKIE_OPTIONS,
-    );
+    setActiveGroupCookies(await cookies(), group.id, session.session.id);
     return Response.json({ group }, { status: 201 });
   } catch (error) {
     console.error("Could not create group", error);
