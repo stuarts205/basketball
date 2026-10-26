@@ -1,0 +1,285 @@
+import "dotenv/config";
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { randomUUID } from "node:crypto";
+import { and, eq, sql } from "drizzle-orm";
+import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
+import { db } from "@/db";
+import * as schema from "@/db/schema";
+import { games, picks, teams, user } from "@/db/schema";
+import { auth } from "@/lib/auth";
+import { bracketMatches, loadBracketFromDatabase } from "@/lib/load-bracket";
+import type { BracketState, Match } from "@/lib/types";
+import { DELETE, PUT } from "./route";
+
+test("user picks stay isolated through completed-bracket edits and resets", async (t) => {
+  const rollback = new Error("Roll back regression test picks");
+  const originalTransaction = db.transaction.bind(db);
+
+  try {
+    const before = await db.select().from(games).orderBy(games.id);
+    const teamRows = await db.select().from(teams);
+    assert.equal(before.length, 67, "Import the 2026 tournament before testing");
+    const statements = await generateMigration(
+      generateDrizzleJson({}), generateDrizzleJson(schema),
+    );
+    await assert.rejects(
+      originalTransaction(async (tx) => {
+        const testSchema = `picks_test_${randomUUID().replaceAll("-", "")}`;
+        await tx.execute(sql`CREATE SCHEMA ${sql.identifier(testSchema)}`);
+        await tx.execute(sql`SET LOCAL search_path TO ${sql.identifier(testSchema)}`);
+        for (const statement of statements) {
+          await tx.execute(sql.raw(statement.replaceAll('"public".', `"${testSchema}".`)));
+        }
+        await tx.insert(teams).values(teamRows);
+        await tx.insert(games).values(before);
+        await tx.insert(user).values([
+          { id: "user-a", name: "User A", email: "a@example.test" },
+          { id: "user-b", name: "User B", email: "b@example.test" },
+        ]);
+
+        type AuthSession = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;
+        function sessionFor(id: string): AuthSession {
+          const now = new Date();
+          return {
+            user: {
+              id, name: id, email: `${id}@example.test`, emailVerified: false,
+              createdAt: now, updatedAt: now, image: null,
+            },
+            session: {
+              id: `session-${id}`, userId: id, token: `token-${id}`,
+              expiresAt: new Date(now.getTime() + 3600000),
+              createdAt: now, updatedAt: now, ipAddress: null, userAgent: null,
+            },
+          };
+        }
+        let activeSession: AuthSession | null = sessionFor("user-a");
+        const sessionMock = t.mock.method(auth.api, "getSession", async () => activeSession);
+        const transactionMock = t.mock.method(
+          db,
+          "transaction",
+          async (callback: (transaction: typeof tx) => Promise<unknown>) =>
+            callback(tx),
+        );
+        try {
+          const idByName = new Map(
+            teamRows.map((team) => [team.name, team.id]),
+          );
+          const idByGameId = new Map(before.map((game) => [game.gameId, game.id]));
+          const currentBracket = () => {
+            assert.ok(activeSession);
+            return loadBracketFromDatabase(activeSession.user.id, tx);
+          };
+          const anonymous = await loadBracketFromDatabase(undefined, tx);
+          assert.ok(bracketMatches(anonymous.state).every((match) => !match.winner));
+
+          activeSession = null;
+          const unauthorized = await PUT(new Request("http://localhost/api/games/winner", {
+            method: "PUT", body: JSON.stringify({ gameId: "east-r64-1", teamName: "Duke" }),
+          }));
+          assert.equal(unauthorized.status, 401);
+          assert.equal((await DELETE(new Request("http://localhost/api/games/winner", {
+            method: "DELETE",
+          }))).status, 401);
+          assert.equal((await tx.select().from(picks)).length, 0);
+          activeSession = sessionFor("user-a");
+          const invalidJson = await PUT(new Request("http://localhost/api/games/winner", {
+            method: "PUT", body: "{",
+          }));
+          assert.equal(invalidJson.status, 400);
+          const unready = await PUT(new Request("http://localhost/api/games/winner", {
+            method: "PUT",
+            body: JSON.stringify({ gameId: "championship", teamName: "Duke" }),
+          }));
+          assert.equal(unready.status, 409);
+          const invalidTeam = await PUT(new Request("http://localhost/api/games/winner", {
+            method: "PUT",
+            body: JSON.stringify({ gameId: "east-r64-1", teamName: "Not a participant" }),
+          }));
+          assert.equal(invalidTeam.status, 400);
+          assert.equal((await tx.select().from(picks)).length, 0);
+
+          async function pick(gameId: string, teamName: string) {
+            const response = await PUT(
+              new Request("http://localhost/api/games/winner", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ gameId, teamName, userId: "user-b" }),
+              }),
+            );
+            const body = await response.json();
+            assert.equal(response.status, 200, JSON.stringify(body));
+            assert.ok(body.saved);
+            const state: BracketState = body.state;
+            assert.ok(state);
+            assert.deepEqual(state, (await currentBracket()).state);
+            return state;
+          }
+
+          async function seedWinners(matches: Match[]) {
+            for (const match of matches) {
+              const winner = match.teams[0];
+              assert.ok(winner, `Missing participant for ${match.id}`);
+              const winnerTeamId = idByName.get(winner.name);
+              assert.ok(winnerTeamId);
+              assert.ok(activeSession);
+              await tx.insert(picks).values({
+                userId: activeSession.user.id, gameId: idByGameId.get(match.id)!,
+                winnerTeamId,
+              }).onConflictDoUpdate({
+                target: [picks.userId, picks.gameId], set: { winnerTeamId },
+              });
+            }
+          }
+
+          activeSession = sessionFor("user-b");
+          let otherState = (await currentBracket()).state;
+          const otherFirstFour = otherState.firstFour?.[0];
+          assert.ok(otherFirstFour?.teams[1]);
+          otherState = await pick(otherFirstFour.id, otherFirstFour.teams[1].name);
+          const otherFirstRound = otherState.regions[0].rounds[0].matches[0];
+          assert.ok(otherFirstRound.teams[1]);
+          otherState = await pick(otherFirstRound.id, otherFirstRound.teams[1].name);
+          const otherPicks = await tx.select().from(picks).where(eq(picks.userId, "user-b"));
+          activeSession = sessionFor("user-a");
+          assert.deepEqual((await currentBracket()).state, anonymous.state);
+
+          let state = (await currentBracket()).state;
+          for (const match of state.firstFour ?? []) {
+            assert.ok(match.teams[0]);
+            state = await pick(match.id, match.teams[0].name);
+          }
+          for (let round = 0; round < 4; round++) {
+            await seedWinners(
+              state.regions.flatMap((region) => region.rounds[round].matches),
+            );
+            state = (await currentBracket()).state;
+          }
+          await seedWinners(state.ff);
+          state = (await currentBracket()).state;
+          await seedWinners([state.championship]);
+          state = (await currentBracket()).state;
+          assert.equal(state.championship.winner?.name, "Duke");
+          assert.equal(
+            (await tx.select().from(picks).where(eq(picks.userId, "user-a"))).length,
+            67,
+          );
+
+          // Leave Louisville available as a new Sweet 16 pick.
+          const east = state.regions.find((region) => region.name === "East");
+          assert.ok(east);
+          const louisvilleGame = east.rounds[2].matches[1];
+          assert.equal(louisvilleGame.teams[0]?.name, "Louisville");
+          const opponent = louisvilleGame.teams[1];
+          assert.ok(opponent);
+          state = await pick(louisvilleGame.id, opponent.name);
+          assert.equal(state.championship.winner?.name, "Duke");
+
+          const beforeChange = structuredClone(state);
+          state = await pick(east.rounds[0].matches[0].id, "Siena");
+          const updatedEast = state.regions.find((region) => region.name === "East");
+          assert.ok(updatedEast);
+          assert.equal(updatedEast.rounds[0].matches[0].winner?.name, "Siena");
+          assert.equal(updatedEast.rounds[1].matches[0].teams[0]?.name, "Siena");
+          for (let round = 1; round < 4; round++) {
+            assert.equal(updatedEast.rounds[round].matches[0].winner, null);
+          }
+          assert.equal(state.ff[0].winner, null);
+          assert.equal(state.championship.winner, null);
+          assert.equal((await tx.select().from(picks).where(and(
+            eq(picks.userId, "user-a"), eq(picks.winnerTeamId, idByName.get("Duke")!),
+          ))).length, 0);
+          assert.deepEqual(
+            updatedEast.rounds[1].matches.slice(1),
+            beforeChange.regions[0].rounds[1].matches.slice(1),
+          );
+          assert.deepEqual(
+            updatedEast.rounds[2].matches[1],
+            beforeChange.regions[0].rounds[2].matches[1],
+          );
+          assert.deepEqual(state.regions.slice(1), beforeChange.regions.slice(1));
+          assert.deepEqual(state.ff[1], beforeChange.ff[1]);
+
+          state = await pick(louisvilleGame.id, "Louisville");
+          assert.equal(
+            state.regions[0].rounds[2].matches[1].winner?.name,
+            "Louisville",
+          );
+          assert.equal(
+            state.regions[0].rounds[3].matches[0].teams[1]?.name,
+            "Louisville",
+          );
+
+          // Rebuild the changed path through a new champion.
+          state = await pick(updatedEast.rounds[1].matches[0].id, "Siena");
+          state = await pick(updatedEast.rounds[2].matches[0].id, "Siena");
+          state = await pick(updatedEast.rounds[3].matches[0].id, "Louisville");
+          state = await pick(state.ff[0].id, "Louisville");
+          state = await pick(state.championship.id, "Louisville");
+          assert.equal(state.championship.winner?.name, "Louisville");
+
+          const unchanged = structuredClone(state);
+          state = await pick(louisvilleGame.id, "Louisville");
+          assert.deepEqual(state, unchanged);
+
+          const semifinalOpponent = state.ff[0].teams[1];
+          assert.ok(semifinalOpponent);
+          state = await pick(state.ff[0].id, semifinalOpponent.name);
+          assert.equal(state.championship.winner, null);
+          assert.equal(
+            state.championship.teams[0]?.name,
+            semifinalOpponent.name,
+          );
+
+          const preliminary = state.firstFour?.[0];
+          assert.ok(preliminary?.teams[1]);
+          state = await pick(preliminary.id, preliminary.teams[1].name);
+          const firstRound = state.regions
+            .flatMap((region) => region.rounds[0].matches)
+            .find((match) => match.id === preliminary.nextGameId);
+          assert.equal(
+            firstRound?.teams[preliminary.nextSlot]?.name,
+            preliminary.teams[1].name,
+          );
+          assert.deepEqual((await loadBracketFromDatabase("user-b", tx)).state, otherState);
+          assert.deepEqual(
+            await tx.select().from(picks).where(eq(picks.userId, "user-b")), otherPicks,
+          );
+          assert.deepEqual(
+            (await loadBracketFromDatabase(undefined, tx)).state, anonymous.state,
+          );
+
+          const olderGameId = randomUUID();
+          await tx.insert(games).values({
+            id: olderGameId, gameId: "previous-tournament", year: 2025,
+            round: "First Round", team1Id: teamRows[0].id, team2Id: teamRows[1].id,
+          });
+          await tx.insert(picks).values({
+            userId: "user-a", gameId: olderGameId, winnerTeamId: teamRows[0].id,
+          });
+          const response = await DELETE(new Request("http://localhost/api/games/winner", {
+            method: "DELETE",
+          }));
+          assert.equal(response.status, 200);
+          assert.deepEqual((await response.json()).state, anonymous.state);
+          assert.equal((await tx.select().from(picks).where(and(
+            eq(picks.userId, "user-a"), eq(picks.gameId, olderGameId),
+          ))).length, 1);
+          assert.deepEqual((await loadBracketFromDatabase("user-b", tx)).state, otherState);
+          assert.deepEqual(
+            await tx.select().from(games).where(eq(games.year, 2026)).orderBy(games.id),
+            before,
+          );
+        } finally {
+          transactionMock.mock.restore();
+          sessionMock.mock.restore();
+        }
+        throw rollback;
+      }),
+      (error) => error === rollback,
+    );
+    assert.deepEqual(await db.select().from(games).orderBy(games.id), before);
+  } finally {
+    await db.$client.end();
+  }
+});

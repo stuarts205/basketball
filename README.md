@@ -1,6 +1,62 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Tournament Data
+
+The database importer uses ESPN's 2025-26 men's NCAA tournament bracket, including
+all 68 teams and 67 games. Only First Four and First Round participants are imported;
+later rounds start empty. First Round slots fed by the First Four are left empty.
+Set `DATABASE_URL` in `.env` first.
+
+```bash
+npm run db:seed -- --dry-run
+npm run db:seed -- --replace
+```
+
+`--replace` deletes existing games and teams, including all users' saved picks,
+and imports the verified tournament in one transaction. Without `--replace`, the
+importer updates shared matchup data while preserving user picks in the separate
+`picks` table. First Four entrants are derived per user, never written into shared
+games. Validation failures roll back database changes.
+The source snapshot is saved in `data/tournament-2026.json`; add `--refresh` to
+fetch it again from ESPN. The older `data/data.json` file is sample data and is not
+used by this importer. First Four games appear below the main bracket; choosing a
+winner fills the corresponding First Round slot. Changing that pick removes the
+previous entrant from subsequent local picks.
+
+The bracket starts with First Round teams populated and does not display official
+results. Each pick is stored in `picks` with a text `user_id`, a UUID `game_id`
+referencing the shared game, and a UUID `winner_team_id`. The composite primary
+key allows one pick per user per game. First Four advancement and later-round
+participants are derived from that user's picks and restored on refresh.
+Changing a pick clears invalid downstream picks only for that user; Reset Picks
+clears only that user's current tournament picks. Neither operation modifies
+shared games or official results. The response includes the updated user bracket.
+
+Pick writes require a Better Auth session; the user ID comes from the session,
+not the request body. Signed-out visitors see an unpicked bracket and cannot
+save or reset picks. The Better Auth handler is mounted at `/api/auth/*`.
+Sign-in UI and login-provider configuration are not included yet.
+
+Run `npm run test:picks` to check completed-bracket edits against the configured
+database. The regression test runs inside a rolled-back transaction using an
+isolated schema and checks completed-bracket edits, user isolation, anonymous
+rejection, and reset behavior. Existing tournament data is not modified.
+
 ## Getting Started
+
+### Database schema
+
+Set `DATABASE_URL` in `.env`, then run `npx drizzle-kit push` to apply the
+Drizzle schema. This change creates `picks` and drops the old shared
+`games.winner_team_id` column, intentionally clearing legacy shared picks while
+preserving games, teams, and official results. Review that drop when prompted.
+Do not use `--replace` to migrate existing data.
+
+Auth IDs and their foreign keys use text columns. Better Auth generates
+UUID-formatted strings and uses the same schema through its Drizzle adapter.
+
+Run `npx tsx --test src/db/schema.test.ts` to check foreign-key type compatibility
+without connecting to the database.
 
 First, run the development server:
 
