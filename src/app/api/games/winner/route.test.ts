@@ -1,43 +1,110 @@
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, eq, sql } from "drizzle-orm";
+import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { db } from "@/db";
-import { games, teams } from "@/db/schema";
-import { loadBracketFromDatabase } from "@/lib/load-bracket";
+import * as schema from "@/db/schema";
+import { games, picks, teams, user } from "@/db/schema";
+import { auth } from "@/lib/auth";
+import { bracketMatches, loadBracketFromDatabase } from "@/lib/load-bracket";
 import type { BracketState, Match } from "@/lib/types";
-import { PUT } from "./route";
+import { DELETE, PUT } from "./route";
 
-test("changing completed bracket picks preserves valid picks and stays in sync", async (t) => {
+test("user picks stay isolated through completed-bracket edits and resets", async (t) => {
   const rollback = new Error("Roll back regression test picks");
   const originalTransaction = db.transaction.bind(db);
-  const before = await db.select().from(games);
 
   try {
+    const before = await db.select().from(games).orderBy(games.id);
+    const teamRows = await db.select().from(teams);
+    assert.equal(before.length, 67, "Import the 2026 tournament before testing");
+    const statements = await generateMigration(
+      generateDrizzleJson({}), generateDrizzleJson(schema),
+    );
     await assert.rejects(
       originalTransaction(async (tx) => {
-        // Exercise real queries and handlers without persisting test picks.
+        const testSchema = `picks_test_${randomUUID().replaceAll("-", "")}`;
+        await tx.execute(sql`CREATE SCHEMA ${sql.identifier(testSchema)}`);
+        await tx.execute(sql`SET LOCAL search_path TO ${sql.identifier(testSchema)}`);
+        for (const statement of statements) {
+          await tx.execute(sql.raw(statement.replaceAll('"public".', `"${testSchema}".`)));
+        }
+        await tx.insert(teams).values(teamRows);
+        await tx.insert(games).values(before);
+        await tx.insert(user).values([
+          { id: "user-a", name: "User A", email: "a@example.test" },
+          { id: "user-b", name: "User B", email: "b@example.test" },
+        ]);
+
+        type AuthSession = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;
+        function sessionFor(id: string): AuthSession {
+          const now = new Date();
+          return {
+            user: {
+              id, name: id, email: `${id}@example.test`, emailVerified: false,
+              createdAt: now, updatedAt: now, image: null,
+            },
+            session: {
+              id: `session-${id}`, userId: id, token: `token-${id}`,
+              expiresAt: new Date(now.getTime() + 3600000),
+              createdAt: now, updatedAt: now, ipAddress: null, userAgent: null,
+            },
+          };
+        }
+        let activeSession: AuthSession | null = sessionFor("user-a");
+        const sessionMock = t.mock.method(auth.api, "getSession", async () => activeSession);
         const transactionMock = t.mock.method(
           db,
           "transaction",
           async (callback: (transaction: typeof tx) => Promise<unknown>) =>
             callback(tx),
         );
-        const selectMock = t.mock.method(db, "select", tx.select.bind(tx));
         try {
-          await tx.select().from(games).for("update");
-          await tx.update(games).set({ winnerTeamId: null });
-          const teamRows = await tx.select().from(teams);
           const idByName = new Map(
             teamRows.map((team) => [team.name, team.id]),
           );
+          const idByGameId = new Map(before.map((game) => [game.gameId, game.id]));
+          const currentBracket = () => {
+            assert.ok(activeSession);
+            return loadBracketFromDatabase(activeSession.user.id, tx);
+          };
+          const anonymous = await loadBracketFromDatabase(undefined, tx);
+          assert.ok(bracketMatches(anonymous.state).every((match) => !match.winner));
+
+          activeSession = null;
+          const unauthorized = await PUT(new Request("http://localhost/api/games/winner", {
+            method: "PUT", body: JSON.stringify({ gameId: "east-r64-1", teamName: "Duke" }),
+          }));
+          assert.equal(unauthorized.status, 401);
+          assert.equal((await DELETE(new Request("http://localhost/api/games/winner", {
+            method: "DELETE",
+          }))).status, 401);
+          assert.equal((await tx.select().from(picks)).length, 0);
+          activeSession = sessionFor("user-a");
+          const invalidJson = await PUT(new Request("http://localhost/api/games/winner", {
+            method: "PUT", body: "{",
+          }));
+          assert.equal(invalidJson.status, 400);
+          const unready = await PUT(new Request("http://localhost/api/games/winner", {
+            method: "PUT",
+            body: JSON.stringify({ gameId: "championship", teamName: "Duke" }),
+          }));
+          assert.equal(unready.status, 409);
+          const invalidTeam = await PUT(new Request("http://localhost/api/games/winner", {
+            method: "PUT",
+            body: JSON.stringify({ gameId: "east-r64-1", teamName: "Not a participant" }),
+          }));
+          assert.equal(invalidTeam.status, 400);
+          assert.equal((await tx.select().from(picks)).length, 0);
 
           async function pick(gameId: string, teamName: string) {
             const response = await PUT(
               new Request("http://localhost/api/games/winner", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ gameId, teamName }),
+                body: JSON.stringify({ gameId, teamName, userId: "user-b" }),
               }),
             );
             const body = await response.json();
@@ -45,7 +112,7 @@ test("changing completed bracket picks preserves valid picks and stays in sync",
             assert.ok(body.saved);
             const state: BracketState = body.state;
             assert.ok(state);
-            assert.deepEqual(state, (await loadBracketFromDatabase()).state);
+            assert.deepEqual(state, (await currentBracket()).state);
             return state;
           }
 
@@ -55,14 +122,29 @@ test("changing completed bracket picks preserves valid picks and stays in sync",
               assert.ok(winner, `Missing participant for ${match.id}`);
               const winnerTeamId = idByName.get(winner.name);
               assert.ok(winnerTeamId);
-              await tx
-                .update(games)
-                .set({ winnerTeamId })
-                .where(eq(games.gameId, match.id));
+              assert.ok(activeSession);
+              await tx.insert(picks).values({
+                userId: activeSession.user.id, gameId: idByGameId.get(match.id)!,
+                winnerTeamId,
+              }).onConflictDoUpdate({
+                target: [picks.userId, picks.gameId], set: { winnerTeamId },
+              });
             }
           }
 
-          let state = (await loadBracketFromDatabase()).state;
+          activeSession = sessionFor("user-b");
+          let otherState = (await currentBracket()).state;
+          const otherFirstFour = otherState.firstFour?.[0];
+          assert.ok(otherFirstFour?.teams[1]);
+          otherState = await pick(otherFirstFour.id, otherFirstFour.teams[1].name);
+          const otherFirstRound = otherState.regions[0].rounds[0].matches[0];
+          assert.ok(otherFirstRound.teams[1]);
+          otherState = await pick(otherFirstRound.id, otherFirstRound.teams[1].name);
+          const otherPicks = await tx.select().from(picks).where(eq(picks.userId, "user-b"));
+          activeSession = sessionFor("user-a");
+          assert.deepEqual((await currentBracket()).state, anonymous.state);
+
+          let state = (await currentBracket()).state;
           for (const match of state.firstFour ?? []) {
             assert.ok(match.teams[0]);
             state = await pick(match.id, match.teams[0].name);
@@ -71,13 +153,17 @@ test("changing completed bracket picks preserves valid picks and stays in sync",
             await seedWinners(
               state.regions.flatMap((region) => region.rounds[round].matches),
             );
-            state = (await loadBracketFromDatabase()).state;
+            state = (await currentBracket()).state;
           }
           await seedWinners(state.ff);
-          state = (await loadBracketFromDatabase()).state;
+          state = (await currentBracket()).state;
           await seedWinners([state.championship]);
-          state = (await loadBracketFromDatabase()).state;
+          state = (await currentBracket()).state;
           assert.equal(state.championship.winner?.name, "Duke");
+          assert.equal(
+            (await tx.select().from(picks).where(eq(picks.userId, "user-a"))).length,
+            67,
+          );
 
           // Leave Louisville available as a new Sweet 16 pick.
           const east = state.regions.find((region) => region.name === "East");
@@ -100,6 +186,9 @@ test("changing completed bracket picks preserves valid picks and stays in sync",
           }
           assert.equal(state.ff[0].winner, null);
           assert.equal(state.championship.winner, null);
+          assert.equal((await tx.select().from(picks).where(and(
+            eq(picks.userId, "user-a"), eq(picks.winnerTeamId, idByName.get("Duke")!),
+          ))).length, 0);
           assert.deepEqual(
             updatedEast.rounds[1].matches.slice(1),
             beforeChange.regions[0].rounds[1].matches.slice(1),
@@ -152,15 +241,44 @@ test("changing completed bracket picks preserves valid picks and stays in sync",
             firstRound?.teams[preliminary.nextSlot]?.name,
             preliminary.teams[1].name,
           );
+          assert.deepEqual((await loadBracketFromDatabase("user-b", tx)).state, otherState);
+          assert.deepEqual(
+            await tx.select().from(picks).where(eq(picks.userId, "user-b")), otherPicks,
+          );
+          assert.deepEqual(
+            (await loadBracketFromDatabase(undefined, tx)).state, anonymous.state,
+          );
+
+          const olderGameId = randomUUID();
+          await tx.insert(games).values({
+            id: olderGameId, gameId: "previous-tournament", year: 2025,
+            round: "First Round", team1Id: teamRows[0].id, team2Id: teamRows[1].id,
+          });
+          await tx.insert(picks).values({
+            userId: "user-a", gameId: olderGameId, winnerTeamId: teamRows[0].id,
+          });
+          const response = await DELETE(new Request("http://localhost/api/games/winner", {
+            method: "DELETE",
+          }));
+          assert.equal(response.status, 200);
+          assert.deepEqual((await response.json()).state, anonymous.state);
+          assert.equal((await tx.select().from(picks).where(and(
+            eq(picks.userId, "user-a"), eq(picks.gameId, olderGameId),
+          ))).length, 1);
+          assert.deepEqual((await loadBracketFromDatabase("user-b", tx)).state, otherState);
+          assert.deepEqual(
+            await tx.select().from(games).where(eq(games.year, 2026)).orderBy(games.id),
+            before,
+          );
         } finally {
           transactionMock.mock.restore();
-          selectMock.mock.restore();
+          sessionMock.mock.restore();
         }
         throw rollback;
       }),
       (error) => error === rollback,
     );
-    assert.deepEqual(await db.select().from(games), before);
+    assert.deepEqual(await db.select().from(games).orderBy(games.id), before);
   } finally {
     await db.$client.end();
   }

@@ -9,8 +9,10 @@ import { RegionBracketMirrored } from "./region-bracket-mirrored";
 
 export const FullBracket = ({
   initialState,
+  canEdit,
 }: {
   initialState: BracketState;
+  canEdit: boolean;
 }) => {
   const [state, setState] = useState(initialState);
   const [resetting, setResetting] = useState(false);
@@ -43,19 +45,25 @@ export const FullBracket = ({
   }, []);
 
   async function handleResetPicks() {
+    if (!canEdit) return;
     if (resetRef.current || saveRef.current) return;
     resetRef.current = true;
     setResetting(true);
     setResetError(null);
     try {
       const response = await fetch("/api/games/winner", { method: "DELETE" });
-      if (!response.ok) throw new Error("Reset failed");
+      if (!response.ok) {
+        const body = await response.json();
+        throw new Error(body.error ?? "Could not reset picks");
+      }
       const { state: cleanState }: { state: BracketState } =
         await response.json();
       setState(cleanState);
       setSaveError(null);
-    } catch {
-      setResetError("Could not reset picks. Please try again.");
+    } catch (error) {
+      setResetError(
+        error instanceof Error ? error.message : "Could not reset picks",
+      );
     } finally {
       resetRef.current = false;
       setResetting(false);
@@ -63,6 +71,10 @@ export const FullBracket = ({
   }
 
   async function handleSelectTeam(match: Match, team: Team) {
+    if (!canEdit) {
+      setSaveError("Sign in to save your own picks.");
+      return;
+    }
     if (resetRef.current) return;
     if (match.winner?.name === team.name) return;
     if (saveRef.current) return;
@@ -75,12 +87,17 @@ export const FullBracket = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gameId: match.id, teamName: team.name }),
       });
-      if (!response.ok) throw new Error("Pick could not be saved");
+      if (!response.ok) {
+        const body = await response.json();
+        throw new Error(body.error ?? "Could not save this pick");
+      }
       const { state: savedState }: { state: BracketState } =
         await response.json();
       setState(savedState);
-    } catch {
-      setSaveError("Could not save this pick. Please try again.");
+    } catch (error) {
+      setSaveError(
+        error instanceof Error ? error.message : "Could not save this pick",
+      );
       return;
     } finally {
       saveRef.current = false;
@@ -94,7 +111,7 @@ export const FullBracket = ({
         <button
           type="button"
           onClick={handleResetPicks}
-          disabled={resetting || saving}
+          disabled={!canEdit || resetting || saving}
           className="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-50"
         >
           {resetting ? "Resetting..." : "Reset Picks"}

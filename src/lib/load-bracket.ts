@@ -1,6 +1,6 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { games, teams } from "@/db/schema";
+import { games, picks, teams } from "@/db/schema";
 import { BracketState, FirstFourMatch, Match, Region, Team } from "@/lib/types";
 
 const regionOrder = ["East", "South", "West", "Midwest"];
@@ -26,6 +26,7 @@ function toTeam(
 function toMatch(
   game: typeof games.$inferSelect,
   teamById: Map<string, typeof teams.$inferSelect>,
+  winnerByGameId: Map<string, string>,
 ): Match {
   return {
     id: game.gameId,
@@ -33,17 +34,40 @@ function toMatch(
       game.round === "First Round" || game.round === "First Four"
         ? [toTeam(game.team1Id, teamById), toTeam(game.team2Id, teamById)]
         : [null, null],
-    winner: toTeam(game.winnerTeamId, teamById),
+    winner: toTeam(winnerByGameId.get(game.id) ?? null, teamById),
     score: [null, null],
     status: "upcoming",
   };
 }
 
-export async function loadBracketFromDatabase(): Promise<{
+function validateWinner(match: Match) {
+  if (
+    match.winner &&
+    !match.teams.some((team) => team?.name === match.winner?.name)
+  ) {
+    match.winner = null;
+  }
+}
+
+export function bracketMatches(state: BracketState): Match[] {
+  return [
+    ...(state.firstFour ?? []),
+    ...state.regions.flatMap((region) =>
+      region.rounds.flatMap((round) => round.matches),
+    ),
+    ...state.ff,
+    state.championship,
+  ];
+}
+
+export async function loadBracketFromDatabase(
+  userId?: string,
+  database: Pick<typeof db, "select"> = db,
+): Promise<{
   state: BracketState;
   year: number;
 }> {
-  const [latestYear] = await db
+  const [latestYear] = await database
     .select({ year: games.year })
     .from(games)
     .orderBy(desc(games.year))
@@ -52,9 +76,30 @@ export async function loadBracketFromDatabase(): Promise<{
   if (!latestYear) throw new Error("No tournament games found in the database");
 
   const [gameRows, teamRows] = await Promise.all([
-    db.select().from(games).where(eq(games.year, latestYear.year)),
-    db.select().from(teams),
+    database.select().from(games).where(eq(games.year, latestYear.year)),
+    database.select().from(teams),
   ]);
+  const pickRows = userId
+    ? await database
+        .select({ gameId: picks.gameId, winnerTeamId: picks.winnerTeamId })
+        .from(picks)
+        .innerJoin(games, eq(picks.gameId, games.id))
+        .where(and(eq(picks.userId, userId), eq(games.year, latestYear.year)))
+    : [];
+  return {
+    year: latestYear.year,
+    state: buildBracket(gameRows, teamRows, pickRows),
+  };
+}
+
+export function buildBracket(
+  gameRows: (typeof games.$inferSelect)[],
+  teamRows: (typeof teams.$inferSelect)[],
+  pickRows: Pick<typeof picks.$inferSelect, "gameId" | "winnerTeamId">[],
+): BracketState {
+  const winnerByGameId = new Map(
+    pickRows.map((pick) => [pick.gameId, pick.winnerTeamId]),
+  );
   const teamById = new Map(teamRows.map((team) => [team.id, team]));
   const sortedGames = [...gameRows].sort((a, b) =>
     a.gameId.localeCompare(b.gameId, undefined, { numeric: true }),
@@ -62,8 +107,8 @@ export async function loadBracketFromDatabase(): Promise<{
   const firstFour: FirstFourMatch[] = sortedGames
     .filter((game) => game.round === "First Four")
     .map((game) => {
-      const match = toMatch(game, teamById);
-      match.winner = toTeam(game.winnerTeamId, teamById);
+      const match = toMatch(game, teamById, winnerByGameId);
+      validateWinner(match);
       const seed = match.teams[0]?.seed;
       if (!seed || !game.region || match.teams[1]?.seed !== seed) {
         throw new Error(`Invalid First Four game ${game.gameId}`);
@@ -112,7 +157,7 @@ export async function loadBracketFromDatabase(): Promise<{
             (game) => game.region === regionName && game.round === roundName,
           )
           .map((game) => {
-            const match = toMatch(game, teamById);
+            const match = toMatch(game, teamById, winnerByGameId);
             for (const feeder of firstFour.filter(
               (feeder) => feeder.nextGameId === game.gameId,
             )) {
@@ -124,6 +169,7 @@ export async function loadBracketFromDatabase(): Promise<{
                 ),
               };
             }
+            if (roundName === "First Round") validateWinner(match);
             return match;
           }),
       }));
@@ -135,6 +181,7 @@ export async function loadBracketFromDatabase(): Promise<{
             previous[matchIndex * 2]?.winner ?? null,
             previous[matchIndex * 2 + 1]?.winner ?? null,
           ];
+          validateWinner(match);
         });
       }
 
@@ -152,22 +199,21 @@ export async function loadBracketFromDatabase(): Promise<{
   }
 
   const ff = finalFourRows.map((game, index) => {
-    const match = toMatch(game, teamById);
+    const match = toMatch(game, teamById, winnerByGameId);
     match.teams = [regions[index * 2], regions[index * 2 + 1]].map(
       (region) => region?.rounds[3].matches[0]?.winner ?? null,
     ) as [Team | null, Team | null];
+    validateWinner(match);
     return match;
   });
-  const championship = toMatch(championshipRow, teamById);
+  const championship = toMatch(championshipRow, teamById, winnerByGameId);
   championship.teams = [ff[0].winner, ff[1].winner];
+  validateWinner(championship);
 
   return {
-    year: latestYear.year,
-    state: {
-      regions,
-      firstFour,
-      ff,
-      championship,
-    },
+    regions,
+    firstFour,
+    ff,
+    championship,
   };
 }

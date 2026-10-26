@@ -1,22 +1,17 @@
-import { loadBracketFromDatabase } from "@/lib/load-bracket";
-import { FullBracket } from "@/components/full-bracket";
+import { AuthForm } from "@/components/auth-form";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const { state, year } = await loadBracketFromDatabase();
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (session) redirect("/bracket");
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 lg:px-3">
-      <div className="w-full min-w-0 mx-auto">
-        <h1 className="text-2xl font-bold mb-1 text-gray-800">
-          {year} NCAA Tournament
-        </h1>
-        <p className="text-sm text-gray-400 mb-6">
-          Click any team to advance them to the next round
-        </p>
-        <FullBracket initialState={state} />
-      </div>
+    <div className="flex min-h-screen items-center justify-center bg-gray-100 p-6">
+      <AuthForm />
     </div>
   );
 }

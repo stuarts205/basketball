@@ -249,10 +249,6 @@ async function main() {
           .returning({ id: teams.id });
         idByTeamId.set(team.teamId, saved.id);
       }
-      const existingGames = await transaction.select().from(games);
-      const existingByGameId = new Map(
-        existingGames.map((game) => [game.gameId, game]),
-      );
       for (const game of sourceGames) {
         const region = regionFor(game);
         const slotsPerRegion = 8 / 2 ** (game.roundId - 1);
@@ -280,16 +276,7 @@ async function main() {
           if (game.roundId > 1) return null;
           if (!isFirstFourSlot(competitor))
             return idByTeamId.get(competitor.id)!;
-          const feeder = sourceGames.find(
-            (candidate) =>
-              candidate.roundId === 0 &&
-              regionFor(candidate) === region &&
-              candidate.competitorOne.seed === competitor.seed,
-          )!;
-          return (
-            existingByGameId.get(`first-four-${feeder.bracketLocation}`)
-              ?.winnerTeamId ?? null
-          );
+          return null;
         };
         const row = {
           gameId,
@@ -320,26 +307,22 @@ async function main() {
             (game.round === "First Four" &&
               (!game.team1Id ||
                 !game.team2Id ||
-                (game.winnerTeamId &&
-                  ![game.team1Id, game.team2Id].includes(game.winnerTeamId)) ||
                 game.actualWinnerTeamId)) ||
             (game.round === "First Round" && !game.team1Id && !game.team2Id) ||
             (game.round === "First Round" &&
               (!game.team1Id || !game.team2Id) &&
-              (game.winnerTeamId || game.actualWinnerTeamId)),
+              game.actualWinnerTeamId),
         ) ||
         storedGames
           .filter((game) => game.round === "First Round")
           .flatMap((game) => [game.team1Id, game.team2Id])
           .filter((id) => !id).length !==
-          storedGames.filter(
-            (game) => game.round === "First Four" && !game.winnerTeamId,
-          ).length
+          storedGames.filter((game) => game.round === "First Four").length
       ) {
         throw new Error("Database verification failed; rolling back import");
       }
       console.log(
-        "Database verified: 68 teams and 67 games; saved First Four picks and entrants preserved",
+        "Database verified: 68 teams and 67 games; user picks preserved separately",
       );
     });
   } finally {
