@@ -60,8 +60,11 @@ export function bracketMatches(state: BracketState): Match[] {
   ];
 }
 
+// A user keeps a separate bracket in every group they belong to.
+export type PickOwner = { userId: string; groupId: string };
+
 export async function loadBracketFromDatabase(
-  userId?: string,
+  owner?: PickOwner,
   database: Pick<typeof db, "select"> = db,
 ): Promise<{
   state: BracketState;
@@ -79,12 +82,18 @@ export async function loadBracketFromDatabase(
     database.select().from(games).where(eq(games.year, latestYear.year)),
     database.select().from(teams),
   ]);
-  const pickRows = userId
+  const pickRows = owner
     ? await database
         .select({ gameId: picks.gameId, winnerTeamId: picks.winnerTeamId })
         .from(picks)
         .innerJoin(games, eq(picks.gameId, games.id))
-        .where(and(eq(picks.userId, userId), eq(games.year, latestYear.year)))
+        .where(
+          and(
+            eq(picks.userId, owner.userId),
+            eq(picks.groupId, owner.groupId),
+            eq(games.year, latestYear.year),
+          ),
+        )
     : [];
   return {
     year: latestYear.year,

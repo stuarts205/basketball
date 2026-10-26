@@ -36,3 +36,17 @@ export const COL_LABEL_H = 24;
 export const CONNECTOR_W = 24;
 export const ROUND_INSETS = [0, 0, CARD_W * 0.75, CONNECTOR_W];
 export const DESKTOP_REGION_GAP = 240;
+
+export const GROUP_NAME_MAX_LENGTH = 50;
+
+export type GroupSummary = {
+  id: string;
+  name: string;
+  memberCount: number;
+};
+
+export type UserGroup = {
+  id: string;
+  name: string;
+  role: "admin" | "member";
+};

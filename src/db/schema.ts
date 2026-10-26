@@ -1,11 +1,14 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  foreignKey,
   index,
   integer,
   pgTable,
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -48,12 +51,48 @@ export const games = pgTable("games", {
   actualWinnerTeamId: uuid("actual_winner_team_id").references(() => teams.id),
 });
 
+export const groups = pgTable(
+  "groups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("groups_name_lower_idx").on(sql`lower(${table.name})`)],
+);
+
+export const groupMembers = pgTable(
+  "group_members",
+  {
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ["admin", "member"] })
+      .default("member")
+      .notNull(),
+    joinedAt: timestamp("joined_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.groupId, table.userId] }),
+    index("group_members_user_id_idx").on(table.userId),
+  ],
+);
+
+// Picks belong to a membership, so each group has its own bracket per user
+// and leaving a group drops that group's picks.
 export const picks = pgTable(
   "picks",
   {
     userId: text("user_id")
         .notNull()
         .references(() => user.id, { onDelete: "cascade" }),
+    groupId: uuid("group_id").notNull(),
     gameId: uuid("game_id")
       .notNull()
       .references(() => games.id, { onDelete: "cascade" }),
@@ -62,8 +101,12 @@ export const picks = pgTable(
       .references(() => teams.id),
   },
   (table) => [
-    primaryKey({ columns: [table.userId, table.gameId] }),
+    primaryKey({ columns: [table.userId, table.groupId, table.gameId] }),
     index("picks_game_id_idx").on(table.gameId),
+    foreignKey({
+      columns: [table.groupId, table.userId],
+      foreignColumns: [groupMembers.groupId, groupMembers.userId],
+    }).onDelete("cascade"),
   ],
 );
 

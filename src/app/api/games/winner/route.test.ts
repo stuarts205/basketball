@@ -6,8 +6,9 @@ import { and, eq, sql } from "drizzle-orm";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
-import { games, picks, teams, user } from "@/db/schema";
+import { games, groupMembers, groups, picks, teams, user } from "@/db/schema";
 import { auth } from "@/lib/auth";
+import { joinGroup } from "@/lib/groups";
 import { bracketMatches, loadBracketFromDatabase } from "@/lib/load-bracket";
 import type { BracketState, Match } from "@/lib/types";
 import { DELETE, PUT } from "./route";
@@ -36,6 +37,20 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
         await tx.insert(user).values([
           { id: "user-a", name: "User A", email: "a@example.test" },
           { id: "user-b", name: "User B", email: "b@example.test" },
+        ]);
+        // user-a keeps a separate bracket in each of their groups.
+        const mainGroup = randomUUID();
+        const otherGroup = randomUUID();
+        const outsiderGroup = randomUUID();
+        await tx.insert(groups).values([
+          { id: mainGroup, name: "Main" },
+          { id: otherGroup, name: "Other" },
+          { id: outsiderGroup, name: "Outsider" },
+        ]);
+        await tx.insert(groupMembers).values([
+          { groupId: mainGroup, userId: "user-a" },
+          { groupId: mainGroup, userId: "user-b" },
+          { groupId: otherGroup, userId: "user-a" },
         ]);
 
         type AuthSession = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;
@@ -68,17 +83,19 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           const idByGameId = new Map(before.map((game) => [game.gameId, game.id]));
           const currentBracket = () => {
             assert.ok(activeSession);
-            return loadBracketFromDatabase(activeSession.user.id, tx);
+            return loadBracketFromDatabase(
+              { userId: activeSession.user.id, groupId: mainGroup }, tx,
+            );
           };
           const anonymous = await loadBracketFromDatabase(undefined, tx);
           assert.ok(bracketMatches(anonymous.state).every((match) => !match.winner));
 
           activeSession = null;
           const unauthorized = await PUT(new Request("http://localhost/api/games/winner", {
-            method: "PUT", body: JSON.stringify({ gameId: "east-r64-1", teamName: "Duke" }),
+            method: "PUT", body: JSON.stringify({ groupId: mainGroup, gameId: "east-r64-1", teamName: "Duke" }),
           }));
           assert.equal(unauthorized.status, 401);
-          assert.equal((await DELETE(new Request("http://localhost/api/games/winner", {
+          assert.equal((await DELETE(new Request(`http://localhost/api/games/winner?groupId=${mainGroup}`, {
             method: "DELETE",
           }))).status, 401);
           assert.equal((await tx.select().from(picks)).length, 0);
@@ -89,22 +106,35 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           assert.equal(invalidJson.status, 400);
           const unready = await PUT(new Request("http://localhost/api/games/winner", {
             method: "PUT",
-            body: JSON.stringify({ gameId: "championship", teamName: "Duke" }),
+            body: JSON.stringify({ groupId: mainGroup, gameId: "championship", teamName: "Duke" }),
           }));
           assert.equal(unready.status, 409);
           const invalidTeam = await PUT(new Request("http://localhost/api/games/winner", {
             method: "PUT",
-            body: JSON.stringify({ gameId: "east-r64-1", teamName: "Not a participant" }),
+            body: JSON.stringify({ groupId: mainGroup, gameId: "east-r64-1", teamName: "Not a participant" }),
           }));
           assert.equal(invalidTeam.status, 400);
+          const missingGroup = await PUT(new Request("http://localhost/api/games/winner", {
+            method: "PUT",
+            body: JSON.stringify({ gameId: "east-r64-1", teamName: "Duke" }),
+          }));
+          assert.equal(missingGroup.status, 400);
+          const notMember = await PUT(new Request("http://localhost/api/games/winner", {
+            method: "PUT",
+            body: JSON.stringify({ groupId: outsiderGroup, gameId: "east-r64-1", teamName: "Duke" }),
+          }));
+          assert.equal(notMember.status, 404);
+          assert.equal((await DELETE(new Request(
+            `http://localhost/api/games/winner?groupId=${outsiderGroup}`, { method: "DELETE" },
+          ))).status, 404);
           assert.equal((await tx.select().from(picks)).length, 0);
 
-          async function pick(gameId: string, teamName: string) {
+          async function pick(gameId: string, teamName: string, groupId = mainGroup) {
             const response = await PUT(
               new Request("http://localhost/api/games/winner", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ gameId, teamName, userId: "user-b" }),
+                body: JSON.stringify({ groupId, gameId, teamName, userId: "user-b" }),
               }),
             );
             const body = await response.json();
@@ -112,7 +142,10 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
             assert.ok(body.saved);
             const state: BracketState = body.state;
             assert.ok(state);
-            assert.deepEqual(state, (await currentBracket()).state);
+            assert.ok(activeSession);
+            assert.deepEqual(state, (await loadBracketFromDatabase(
+              { userId: activeSession.user.id, groupId }, tx,
+            )).state);
             return state;
           }
 
@@ -124,10 +157,10 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
               assert.ok(winnerTeamId);
               assert.ok(activeSession);
               await tx.insert(picks).values({
-                userId: activeSession.user.id, gameId: idByGameId.get(match.id)!,
-                winnerTeamId,
+                userId: activeSession.user.id, groupId: mainGroup,
+                gameId: idByGameId.get(match.id)!, winnerTeamId,
               }).onConflictDoUpdate({
-                target: [picks.userId, picks.gameId], set: { winnerTeamId },
+                target: [picks.userId, picks.groupId, picks.gameId], set: { winnerTeamId },
               });
             }
           }
@@ -164,6 +197,30 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
             (await tx.select().from(picks).where(eq(picks.userId, "user-a"))).length,
             67,
           );
+
+          // The same user's bracket in another group starts empty and is
+          // edited and reset independently.
+          const otherOwner = { userId: "user-a", groupId: otherGroup };
+          assert.deepEqual(
+            (await loadBracketFromDatabase(otherOwner, tx)).state, anonymous.state,
+          );
+          const otherGroupGame = state.regions[0].rounds[0].matches[0];
+          assert.ok(otherGroupGame.teams[1]);
+          const otherGroupState = await pick(
+            otherGroupGame.id, otherGroupGame.teams[1].name, otherGroup,
+          );
+          assert.equal(
+            otherGroupState.regions[0].rounds[0].matches[0].winner?.name,
+            otherGroupGame.teams[1].name,
+          );
+          assert.deepEqual((await currentBracket()).state, state);
+          assert.equal((await DELETE(new Request(
+            `http://localhost/api/games/winner?groupId=${otherGroup}`, { method: "DELETE" },
+          ))).status, 200);
+          assert.deepEqual(
+            (await loadBracketFromDatabase(otherOwner, tx)).state, anonymous.state,
+          );
+          assert.deepEqual((await currentBracket()).state, state);
 
           // Leave Louisville available as a new Sweet 16 pick.
           const east = state.regions.find((region) => region.name === "East");
@@ -241,10 +298,39 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
             firstRound?.teams[preliminary.nextSlot]?.name,
             preliminary.teams[1].name,
           );
-          assert.deepEqual((await loadBracketFromDatabase("user-b", tx)).state, otherState);
+          assert.deepEqual((await loadBracketFromDatabase(
+            { userId: "user-b", groupId: mainGroup }, tx,
+          )).state, otherState);
           assert.deepEqual(
             await tx.select().from(picks).where(eq(picks.userId, "user-b")), otherPicks,
           );
+
+          // Joining a group can start from a copy of an existing bracket,
+          // which then changes independently of the original.
+          const copiedGroup = randomUUID();
+          await tx.insert(groups).values({ id: copiedGroup, name: "Copied" });
+          assert.ok(await joinGroup("user-a", copiedGroup, mainGroup));
+          const copiedOwner = { userId: "user-a", groupId: copiedGroup };
+          assert.deepEqual((await loadBracketFromDatabase(copiedOwner, tx)).state, state);
+          const copiedState = await pick(
+            preliminary.id, preliminary.teams[0]!.name, copiedGroup,
+          );
+          assert.notDeepEqual(copiedState, state);
+          assert.deepEqual((await currentBracket()).state, state);
+          // Copying from a group the user does not belong to copies nothing.
+          assert.ok(await joinGroup("user-b", otherGroup, mainGroup));
+          assert.deepEqual(
+            (await loadBracketFromDatabase({ userId: "user-b", groupId: otherGroup }, tx)).state,
+            otherState,
+          );
+          assert.ok(await joinGroup("user-b", outsiderGroup, copiedGroup));
+          assert.deepEqual(
+            (await loadBracketFromDatabase({ userId: "user-b", groupId: outsiderGroup }, tx)).state,
+            anonymous.state,
+          );
+          await tx.delete(groupMembers).where(and(
+            eq(groupMembers.userId, "user-b"), eq(groupMembers.groupId, otherGroup),
+          ));
           assert.deepEqual(
             (await loadBracketFromDatabase(undefined, tx)).state, anonymous.state,
           );
@@ -255,9 +341,10 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
             round: "First Round", team1Id: teamRows[0].id, team2Id: teamRows[1].id,
           });
           await tx.insert(picks).values({
-            userId: "user-a", gameId: olderGameId, winnerTeamId: teamRows[0].id,
+            userId: "user-a", groupId: mainGroup, gameId: olderGameId,
+            winnerTeamId: teamRows[0].id,
           });
-          const response = await DELETE(new Request("http://localhost/api/games/winner", {
+          const response = await DELETE(new Request(`http://localhost/api/games/winner?groupId=${mainGroup}`, {
             method: "DELETE",
           }));
           assert.equal(response.status, 200);
@@ -265,7 +352,9 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           assert.equal((await tx.select().from(picks).where(and(
             eq(picks.userId, "user-a"), eq(picks.gameId, olderGameId),
           ))).length, 1);
-          assert.deepEqual((await loadBracketFromDatabase("user-b", tx)).state, otherState);
+          assert.deepEqual((await loadBracketFromDatabase(
+            { userId: "user-b", groupId: mainGroup }, tx,
+          )).state, otherState);
           assert.deepEqual(
             await tx.select().from(games).where(eq(games.year, 2026)).orderBy(games.id),
             before,

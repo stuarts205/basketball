@@ -42,6 +42,44 @@ database. The regression test runs inside a rolled-back transaction using an
 isolated schema and checks completed-bracket edits, user isolation, anonymous
 rejection, and reset behavior. Existing tournament data is not modified.
 
+## Groups
+
+Any signed-in user can create a group; the creator is stored in
+`group_members` with the `admin` role. Group names are unique regardless of case.
+Signed-in users who belong to no group see a modal on `/bracket` that lists
+existing groups to join or lets them create one. Routes: `GET /api/groups`,
+`POST /api/groups` (`{ name, copyPicksFrom? }`), and
+`POST /api/groups/:groupId/members` (join, `{ copyPicksFrom? }`).
+
+Picks are stored per user **per group**: `picks` is keyed by
+`(user_id, group_id, game_id)` and references `group_members`, so a user's
+bracket in one group never changes their bracket in another, and leaving a
+group deletes that group's picks. `/bracket` shows the active group's bracket;
+`PUT /api/games/winner` takes `groupId` in its body and
+`DELETE /api/games/winner?groupId=...` resets one group's bracket. When a user
+who already belongs to a group joins or creates another, they choose to start
+a fresh bracket (the default) or copy their picks from one of their groups.
+
+#### Migrating picks that predate groups
+
+Before running `npx drizzle-kit push` for this change, assign existing picks
+to each user's default group (the first by name, matching the app's fallback
+active group). Picks of users in no group are dropped.
+
+```sql
+ALTER TABLE picks ADD COLUMN group_id uuid;
+UPDATE picks p SET group_id = (
+  SELECT gm.group_id FROM group_members gm
+  JOIN groups g ON g.id = gm.group_id
+  WHERE gm.user_id = p.user_id
+  ORDER BY g.name LIMIT 1
+);
+DELETE FROM picks WHERE group_id IS NULL;
+```
+
+Then `npx drizzle-kit push` makes the column required and switches the primary
+and foreign keys.
+
 ## Getting Started
 
 ### Database schema

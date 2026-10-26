@@ -9,11 +9,13 @@ import { RegionBracketMirrored } from "./region-bracket-mirrored";
 
 export const FullBracket = ({
   initialState,
-  canEdit,
+  groupId,
 }: {
   initialState: BracketState;
-  canEdit: boolean;
+  // The group whose bracket is shown; picks are saved only with one.
+  groupId: string | null;
 }) => {
+  const canEdit = groupId !== null;
   const [state, setState] = useState(initialState);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -45,13 +47,16 @@ export const FullBracket = ({
   }, []);
 
   async function handleResetPicks() {
-    if (!canEdit) return;
+    if (!groupId) return;
     if (resetRef.current || saveRef.current) return;
     resetRef.current = true;
     setResetting(true);
     setResetError(null);
     try {
-      const response = await fetch("/api/games/winner", { method: "DELETE" });
+      const response = await fetch(
+        `/api/games/winner?groupId=${encodeURIComponent(groupId)}`,
+        { method: "DELETE" },
+      );
       if (!response.ok) {
         const body = await response.json();
         throw new Error(body.error ?? "Could not reset picks");
@@ -71,8 +76,8 @@ export const FullBracket = ({
   }
 
   async function handleSelectTeam(match: Match, team: Team) {
-    if (!canEdit) {
-      setSaveError("Sign in to save your own picks.");
+    if (!groupId) {
+      setSaveError("Join a group to save your picks.");
       return;
     }
     if (resetRef.current) return;
@@ -85,7 +90,11 @@ export const FullBracket = ({
       const response = await fetch("/api/games/winner", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId: match.id, teamName: team.name }),
+        body: JSON.stringify({
+          groupId,
+          gameId: match.id,
+          teamName: team.name,
+        }),
       });
       if (!response.ok) {
         const body = await response.json();

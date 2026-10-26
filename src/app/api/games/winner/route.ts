@@ -2,7 +2,13 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { games, picks, teams, user } from "@/db/schema";
 import { auth } from "@/lib/auth";
+import { UUID_PATTERN, findUserGroup } from "@/lib/groups";
 import { bracketMatches, loadBracketFromDatabase } from "@/lib/load-bracket";
+
+const notAMember = {
+  status: 404,
+  body: { error: "You are not a member of that group" },
+} as const;
 
 export async function DELETE(request: Request) {
   try {
@@ -10,13 +16,19 @@ export async function DELETE(request: Request) {
     if (!session)
       return Response.json({ error: "Sign in to reset picks" }, { status: 401 });
 
+    const groupId = new URL(request.url).searchParams.get("groupId") ?? "";
+    if (!UUID_PATTERN.test(groupId))
+      return Response.json({ error: "groupId is required" }, { status: 400 });
+    const owner = { userId: session.user.id, groupId };
+
     const result = await db.transaction(async (tx) => {
       await tx
         .select({ id: user.id })
         .from(user)
         .where(eq(user.id, session.user.id))
         .for("update");
-      const bracket = await loadBracketFromDatabase(session.user.id, tx);
+      if (!(await findUserGroup(session.user.id, groupId, tx))) return notAMember;
+      const bracket = await loadBracketFromDatabase(owner, tx);
       const tournamentGames = await tx
         .select({ id: games.id })
         .from(games)
@@ -26,12 +38,13 @@ export async function DELETE(request: Request) {
         .where(
           and(
             eq(picks.userId, session.user.id),
+            eq(picks.groupId, groupId),
             inArray(picks.gameId, tournamentGames.map((game) => game.id)),
           ),
         );
-      return loadBracketFromDatabase(session.user.id, tx);
+      return { status: 200, body: await loadBracketFromDatabase(owner, tx) };
     });
-    return Response.json(result);
+    return Response.json(result.body, { status: result.status });
   } catch (error) {
     console.error("Could not reset user picks", error);
     return Response.json({ error: "Could not reset picks" }, { status: 500 });
@@ -53,17 +66,21 @@ export async function PUT(request: Request) {
     if (
       !body ||
       typeof body !== "object" ||
+      !("groupId" in body) ||
+      typeof body.groupId !== "string" ||
+      !UUID_PATTERN.test(body.groupId) ||
       !("gameId" in body) ||
       typeof body.gameId !== "string" ||
       !("teamName" in body) ||
       typeof body.teamName !== "string"
     ) {
       return Response.json(
-        { error: "gameId and teamName are required" },
+        { error: "groupId, gameId and teamName are required" },
         { status: 400 },
       );
     }
-    const { gameId, teamName } = body;
+    const { groupId, gameId, teamName } = body;
+    const owner = { userId: session.user.id, groupId };
 
     const result = await db.transaction(async (tx) => {
       // Serialize edits for this user without locking other users' brackets.
@@ -72,7 +89,8 @@ export async function PUT(request: Request) {
         .from(user)
         .where(eq(user.id, session.user.id))
         .for("update");
-      const bracket = await loadBracketFromDatabase(session.user.id, tx);
+      if (!(await findUserGroup(session.user.id, groupId, tx))) return notAMember;
+      const bracket = await loadBracketFromDatabase(owner, tx);
       const match = bracketMatches(bracket.state).find(
         (entry) => entry.id === gameId,
       );
@@ -107,15 +125,16 @@ export async function PUT(request: Request) {
         .insert(picks)
         .values({
           userId: session.user.id,
+          groupId,
           gameId: game.id,
           winnerTeamId: team.id,
         })
         .onConflictDoUpdate({
-          target: [picks.userId, picks.gameId],
+          target: [picks.userId, picks.groupId, picks.gameId],
           set: { winnerTeamId: team.id },
         });
 
-      const updated = await loadBracketFromDatabase(session.user.id, tx);
+      const updated = await loadBracketFromDatabase(owner, tx);
       const validWinners = new Map(
         bracketMatches(updated.state).map((entry) => [
           entry.id,
@@ -132,7 +151,11 @@ export async function PUT(request: Request) {
         .innerJoin(games, eq(picks.gameId, games.id))
         .innerJoin(teams, eq(picks.winnerTeamId, teams.id))
         .where(
-          and(eq(picks.userId, session.user.id), eq(games.year, bracket.year)),
+          and(
+            eq(picks.userId, session.user.id),
+            eq(picks.groupId, groupId),
+            eq(games.year, bracket.year),
+          ),
         );
       const invalidIds = saved
         .filter((pick) => validWinners.get(pick.externalGameId) !== pick.teamName)
@@ -143,6 +166,7 @@ export async function PUT(request: Request) {
           .where(
             and(
               eq(picks.userId, session.user.id),
+              eq(picks.groupId, groupId),
               inArray(picks.gameId, invalidIds),
             ),
           );
