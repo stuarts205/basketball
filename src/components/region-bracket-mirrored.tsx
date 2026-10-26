@@ -1,8 +1,15 @@
-import { CARD_W, COL_LABEL_H, Match, Region, Team } from '@/lib/types';
-import React from 'react'
-import { ConnectorLinesMirrored } from './connector-lines-mirrored';
-import { roundLayout } from '@/lib/utils';
-import { MatchCard } from './match-card';
+import {
+  CARD_W,
+  COL_LABEL_H,
+  Match,
+  Region,
+  ROUND_INSETS,
+  Team,
+} from "@/lib/types";
+import React from "react";
+import { ConnectorLinesMirrored } from "./connector-lines-mirrored";
+import { roundLayout } from "@/lib/utils";
+import { MatchCard } from "./match-card";
 
 export const RegionBracketMirrored = ({
   region,
@@ -12,43 +19,51 @@ export const RegionBracketMirrored = ({
   onSelectTeam: (match: Match, team: Team) => void;
 }) => {
   return (
-      <div className="flex flex-col items-end shrink-0">
-        <div className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 pr-1">
-          {region.name}
-        </div>
-        <div className="flex flex-row-reverse items-start">
-          {region.rounds.map((round, ri) => (
-            <div
-              key={round.name}
-              className="flex flex-row-reverse items-start shrink-0"
-            >
-              {ri > 0 && <ConnectorLinesMirrored roundIndex={ri} />}
-              <div className="flex flex-col shrink-0">
-                <div
-                  className="text-[9px] font-bold text-gray-300 uppercase tracking-widest text-center"
-                  style={{
-                    width: CARD_W,
-                    height: COL_LABEL_H,
-                    lineHeight: `${COL_LABEL_H}px`,
-                  }}
-                >
-                  {round.name}
-                </div>
-                <div
-                  className="flex flex-col shrink-0"
-                  style={{
-                    paddingTop: roundLayout(ri).topPad,
-                    gap: roundLayout(ri).gap,
-                  }}
-                >
-                  {round.matches.map((m) => (
-                    <MatchCard key={m.id} match={m} onSelectTeam={onSelectTeam} />
-                  ))}
-                </div>
+    <div className="isolate flex flex-col items-end shrink-0">
+      <div className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 pr-1">
+        {region.name}
+      </div>
+      <div className="flex flex-row-reverse items-start">
+        {region.rounds.map((round, ri) => (
+          <div
+            key={round.name}
+            className="flex flex-row-reverse items-start shrink-0"
+            style={{ marginRight: -(ROUND_INSETS[ri] ?? 0) }}
+          >
+            {ri > 0 && <ConnectorLinesMirrored roundIndex={ri} />}
+            <div className="pointer-events-none relative z-10 flex flex-col shrink-0">
+              <div
+                className="text-[9px] font-bold text-gray-300 uppercase tracking-widest text-center"
+                style={{
+                  width: CARD_W,
+                  height: COL_LABEL_H,
+                  lineHeight: `${COL_LABEL_H}px`,
+                  ...(ri >= 2
+                    ? {
+                        transform: `translateY(${roundLayout(ri).topPad}px)`,
+                        textAlign: "left",
+                        paddingLeft: 4,
+                      }
+                    : {}),
+                }}
+              >
+                {round.name}
+              </div>
+              <div
+                className="flex flex-col shrink-0"
+                style={{
+                  paddingTop: roundLayout(ri).topPad,
+                  gap: roundLayout(ri).gap,
+                }}
+              >
+                {round.matches.map((m) => (
+                  <MatchCard key={m.id} match={m} onSelectTeam={onSelectTeam} />
+                ))}
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
-    );
-}
+    </div>
+  );
+};

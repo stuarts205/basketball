@@ -1,0 +1,173 @@
+import { desc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { games, teams } from "@/db/schema";
+import { BracketState, FirstFourMatch, Match, Region, Team } from "@/lib/types";
+
+const regionOrder = ["East", "South", "West", "Midwest"];
+const roundOrder = ["First Round", "Second Round", "Sweet 16", "Elite 8"];
+
+function toTeam(
+  teamId: string | null,
+  teamById: Map<string, typeof teams.$inferSelect>,
+): Team | null {
+  if (!teamId) return null;
+
+  const team = teamById.get(teamId);
+  if (!team) throw new Error(`Game references unknown team ${teamId}`);
+
+  return {
+    seed: team.seed ?? 0,
+    name: team.name,
+    logo: team.logo,
+    color: team.color.startsWith("#") ? team.color : `#${team.color}`,
+  };
+}
+
+function toMatch(
+  game: typeof games.$inferSelect,
+  teamById: Map<string, typeof teams.$inferSelect>,
+): Match {
+  return {
+    id: game.gameId,
+    teams:
+      game.round === "First Round" || game.round === "First Four"
+        ? [toTeam(game.team1Id, teamById), toTeam(game.team2Id, teamById)]
+        : [null, null],
+    winner: toTeam(game.winnerTeamId, teamById),
+    score: [null, null],
+    status: "upcoming",
+  };
+}
+
+export async function loadBracketFromDatabase(): Promise<{
+  state: BracketState;
+  year: number;
+}> {
+  const [latestYear] = await db
+    .select({ year: games.year })
+    .from(games)
+    .orderBy(desc(games.year))
+    .limit(1);
+
+  if (!latestYear) throw new Error("No tournament games found in the database");
+
+  const [gameRows, teamRows] = await Promise.all([
+    db.select().from(games).where(eq(games.year, latestYear.year)),
+    db.select().from(teams),
+  ]);
+  const teamById = new Map(teamRows.map((team) => [team.id, team]));
+  const sortedGames = [...gameRows].sort((a, b) =>
+    a.gameId.localeCompare(b.gameId, undefined, { numeric: true }),
+  );
+  const firstFour: FirstFourMatch[] = sortedGames
+    .filter((game) => game.round === "First Four")
+    .map((game) => {
+      const match = toMatch(game, teamById);
+      match.winner = toTeam(game.winnerTeamId, teamById);
+      const seed = match.teams[0]?.seed;
+      if (!seed || !game.region || match.teams[1]?.seed !== seed) {
+        throw new Error(`Invalid First Four game ${game.gameId}`);
+      }
+      const target = sortedGames.find(
+        (candidate) =>
+          candidate.round === "First Round" &&
+          candidate.region === game.region &&
+          [candidate.team1Id, candidate.team2Id].some(
+            (id) => id && teamById.get(id)?.seed === 17 - seed,
+          ),
+      );
+      if (!target)
+        throw new Error(`Missing First Four destination for ${game.gameId}`);
+      const nextSlot: 0 | 1 =
+        target.team1Id && teamById.get(target.team1Id)?.seed === 17 - seed
+          ? 1
+          : 0;
+      return {
+        ...match,
+        region: game.region,
+        nextGameId: target.gameId,
+        nextSlot,
+      };
+    });
+  const regions: Region[] = [
+    ...new Set(
+      sortedGames
+        .map((game) => game.region)
+        .filter((region): region is string => Boolean(region)),
+    ),
+  ]
+    .sort((a, b) => {
+      const aIndex = regionOrder.indexOf(a);
+      const bIndex = regionOrder.indexOf(b);
+      return (
+        (aIndex === -1 ? regionOrder.length : aIndex) -
+          (bIndex === -1 ? regionOrder.length : bIndex) || a.localeCompare(b)
+      );
+    })
+    .map((regionName) => {
+      const rounds = roundOrder.map((roundName) => ({
+        name: roundName,
+        matches: sortedGames
+          .filter(
+            (game) => game.region === regionName && game.round === roundName,
+          )
+          .map((game) => {
+            const match = toMatch(game, teamById);
+            for (const feeder of firstFour.filter(
+              (feeder) => feeder.nextGameId === game.gameId,
+            )) {
+              match.teams[feeder.nextSlot] = feeder.winner;
+              match.pendingTeams = {
+                ...match.pendingTeams,
+                [feeder.nextSlot]: feeder.teams.filter(
+                  (team): team is Team => team !== null,
+                ),
+              };
+            }
+            return match;
+          }),
+      }));
+
+      for (let roundIndex = 1; roundIndex < rounds.length; roundIndex++) {
+        const previous = rounds[roundIndex - 1].matches;
+        rounds[roundIndex].matches.forEach((match, matchIndex) => {
+          match.teams = [
+            previous[matchIndex * 2]?.winner ?? null,
+            previous[matchIndex * 2 + 1]?.winner ?? null,
+          ];
+        });
+      }
+
+      return { name: regionName, rounds };
+    });
+
+  const finalFourRows = sortedGames.filter(
+    (game) => game.round === "Semifinal",
+  );
+  const championshipRow = sortedGames.find(
+    (game) => game.round === "Championship",
+  );
+  if (finalFourRows.length !== 2 || !championshipRow) {
+    throw new Error("Tournament is missing Final Four or Championship games");
+  }
+
+  const ff = finalFourRows.map((game, index) => {
+    const match = toMatch(game, teamById);
+    match.teams = [regions[index * 2], regions[index * 2 + 1]].map(
+      (region) => region?.rounds[3].matches[0]?.winner ?? null,
+    ) as [Team | null, Team | null];
+    return match;
+  });
+  const championship = toMatch(championshipRow, teamById);
+  championship.teams = [ff[0].winner, ff[1].winner];
+
+  return {
+    year: latestYear.year,
+    state: {
+      regions,
+      firstFour,
+      ff,
+      championship,
+    },
+  };
+}

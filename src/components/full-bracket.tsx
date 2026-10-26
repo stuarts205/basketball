@@ -1,6 +1,5 @@
 "use client";
-import { CARD_W, Match, Team } from "@/lib/types";
-import { buildInitialState } from "@/lib/utils";
+import { BracketState, DESKTOP_REGION_GAP, Match, Team } from "@/lib/types";
 import React, { useLayoutEffect, useRef, useState } from "react";
 import { RegionBracket } from "./region-bracket";
 import { ChampionCard } from "./champion-card";
@@ -8,8 +7,18 @@ import { MatchCard } from "./match-card";
 import { FinalFourCenter } from "./final-four-center";
 import { RegionBracketMirrored } from "./region-bracket-mirrored";
 
-export const FullBracket = () => {
-  const [state, setState] = useState(buildInitialState);
+export const FullBracket = ({
+  initialState,
+}: {
+  initialState: BracketState;
+}) => {
+  const [state, setState] = useState(initialState);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const resetRef = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const saveRef = useRef(false);
   const desktopViewportRef = useRef<HTMLDivElement>(null);
   const desktopContentRef = useRef<HTMLDivElement>(null);
   const [desktopSize, setDesktopSize] = useState<{
@@ -33,113 +42,69 @@ export const FullBracket = () => {
     return () => window.removeEventListener("resize", updateScale);
   }, []);
 
-  function handleSelectTeam(match: Match, team: Team) {
-    setState((prev) => {
-      // Deep clone
-      const next = {
-        regions: prev.regions.map((r) => ({
-          ...r,
-          rounds: r.rounds.map((round) => ({
-            ...round,
-            matches: round.matches.map((m) => ({
-              ...m,
-              teams: [...m.teams] as [Team | null, Team | null],
-            })),
-          })),
-        })),
-        ff: prev.ff.map((m) => ({
-          ...m,
-          teams: [...m.teams] as [Team | null, Team | null],
-        })),
-        championship: {
-          ...prev.championship,
-          teams: [...prev.championship.teams] as [Team | null, Team | null],
-        },
-      };
+  async function handleResetPicks() {
+    if (resetRef.current || saveRef.current) return;
+    resetRef.current = true;
+    setResetting(true);
+    setResetError(null);
+    try {
+      const response = await fetch("/api/games/winner", { method: "DELETE" });
+      if (!response.ok) throw new Error("Reset failed");
+      const { state: cleanState }: { state: BracketState } =
+        await response.json();
+      setState(cleanState);
+      setSaveError(null);
+    } catch {
+      setResetError("Could not reset picks. Please try again.");
+    } finally {
+      resetRef.current = false;
+      setResetting(false);
+    }
+  }
 
-      // Find the match — search regions first, then ff, then championship
-      let found = false;
-
-      // Check championship
-      if (next.championship.id === match.id) {
-        next.championship.winner = team;
-        found = true;
-      }
-
-      // Check ff
-      if (!found) {
-        const fi = next.ff.findIndex((m) => m.id === match.id);
-        if (fi !== -1) {
-          next.ff[fi].winner = team;
-          // Advance to championship
-          const side = fi as 0 | 1;
-          next.championship.teams[side] = team;
-          next.championship.winner = null;
-          next.championship.score = [null, null];
-          found = true;
-        }
-      }
-
-      // Check regions
-      if (!found) {
-        for (let regi = 0; regi < next.regions.length; regi++) {
-          const region = next.regions[regi];
-          let ri = -1,
-            mi = -1;
-          for (let r = 0; r < region.rounds.length; r++) {
-            const m = region.rounds[r].matches.findIndex(
-              (m) => m.id === match.id,
-            );
-            if (m !== -1) {
-              ri = r;
-              mi = m;
-              break;
-            }
-          }
-          if (ri === -1) continue;
-
-          region.rounds[ri].matches[mi].winner = team;
-
-          if (ri + 1 < region.rounds.length) {
-            // Advance within region
-            const slot = Math.floor(mi / 2);
-            const side = (mi % 2) as 0 | 1;
-            region.rounds[ri + 1].matches[slot].teams[side] = team;
-            region.rounds[ri + 1].matches[slot].winner = null;
-            region.rounds[ri + 1].matches[slot].score = [null, null];
-            // Clear downstream
-            for (let r = ri + 2; r < region.rounds.length; r++) {
-              const s = Math.floor(slot / Math.pow(2, r - ri - 1));
-              if (region.rounds[r]?.matches[s]) {
-                region.rounds[r].matches[s].teams = [null, null];
-                region.rounds[r].matches[s].winner = null;
-                region.rounds[r].matches[s].score = [null, null];
-              }
-            }
-          } else {
-            // Elite 8 winner → Final Four
-            // South(0) and West(1) → ff[0] top/bottom
-            // East(2) and Midwest(3) → ff[1] top/bottom
-            const ffIndex = regi < 2 ? 0 : 1;
-            const ffSide = (regi % 2) as 0 | 1;
-            next.ff[ffIndex].teams[ffSide] = team;
-            next.ff[ffIndex].winner = null;
-            next.ff[ffIndex].score = [null, null];
-            next.championship.teams[ffIndex as 0 | 1] = null;
-            next.championship.winner = null;
-            next.championship.score = [null, null];
-          }
-          found = true;
-          break;
-        }
-      }
-
-      return next;
-    });
+  async function handleSelectTeam(match: Match, team: Team) {
+    if (resetRef.current) return;
+    if (match.winner?.name === team.name) return;
+    if (saveRef.current) return;
+    saveRef.current = true;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const response = await fetch("/api/games/winner", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId: match.id, teamName: team.name }),
+      });
+      if (!response.ok) throw new Error("Pick could not be saved");
+      const { state: savedState }: { state: BracketState } =
+        await response.json();
+      setState(savedState);
+    } catch {
+      setSaveError("Could not save this pick. Please try again.");
+      return;
+    } finally {
+      saveRef.current = false;
+      setSaving(false);
+    }
   }
 
   return (
     <div className="w-full">
+      <div className="mb-4 flex justify-end">
+        <button
+          type="button"
+          onClick={handleResetPicks}
+          disabled={resetting || saving}
+          className="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-50"
+        >
+          {resetting ? "Resetting..." : "Reset Picks"}
+        </button>
+      </div>
+      {(resetError || saveError) && (
+        <p role="alert" className="mb-4 text-sm text-red-700">
+          {resetError ?? saveError}
+        </p>
+      )}
       {/* ── MOBILE: stacked regions, no mirroring ── */}
       <div className="flex flex-col gap-10 lg:hidden overflow-x-auto">
         <RegionBracket
@@ -160,30 +125,49 @@ export const FullBracket = () => {
         />
 
         {/* Final Four — simplified stacked layout at bottom on mobile */}
-        <div className="flex flex-col gap-4">
+        <div className="mx-auto flex w-full max-w-lg flex-col gap-3">
           <div className="mb-1">
             <div className="text-xs font-black uppercase tracking-widest text-gray-500">
               Final Four
             </div>
-            {state.championship.winner && (
-              <ChampionCard team={state.championship.winner} width={CARD_W} />
-            )}
           </div>
-          <MatchCard
-            match={state.ff[0]}
-            onSelectTeam={handleSelectTeam}
-            width={CARD_W}
-          />
-          <MatchCard
-            match={state.ff[1]}
-            onSelectTeam={handleSelectTeam}
-            width={CARD_W}
-          />
-          <MatchCard
-            match={state.championship}
-            onSelectTeam={handleSelectTeam}
-            width={CARD_W}
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <MatchCard
+              match={state.ff[0]}
+              onSelectTeam={handleSelectTeam}
+              width="100%"
+            />
+            <MatchCard
+              match={state.ff[1]}
+              onSelectTeam={handleSelectTeam}
+              width="100%"
+            />
+          </div>
+          <div className="relative h-8 w-full" aria-hidden="true">
+            <svg
+              className="absolute inset-0 h-full w-full"
+              viewBox="0 0 100 32"
+              preserveAspectRatio="none"
+            >
+              <path
+                d="M 25 0 V 16 H 50 V 32 M 75 0 V 16 H 50"
+                fill="none"
+                stroke="#9ca3af"
+                strokeWidth="1.75"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <div className="w-full">
+            <MatchCard
+              match={state.championship}
+              onSelectTeam={handleSelectTeam}
+              width="100%"
+            />
+          </div>
+          {state.championship.winner && (
+            <ChampionCard team={state.championship.winner} width="100%" />
+          )}
         </div>
       </div>
 
@@ -211,8 +195,11 @@ export const FullBracket = () => {
                 }
           }
         >
-          {/* LEFT SIDE: South (top) + West (bottom) */}
-          <div className="flex flex-col gap-8 shrink-0">
+          {/* LEFT SIDE: East (top) + South (bottom) */}
+          <div
+            className="flex flex-col shrink-0"
+            style={{ gap: DESKTOP_REGION_GAP }}
+          >
             <RegionBracket
               region={state.regions[0]}
               onSelectTeam={handleSelectTeam}
@@ -230,8 +217,11 @@ export const FullBracket = () => {
             onSelectTeam={handleSelectTeam}
           />
 
-          {/* RIGHT SIDE: East (top) + Midwest (bottom) — mirrored */}
-          <div className="flex flex-col gap-8 shrink-0">
+          {/* RIGHT SIDE: West (top) + Midwest (bottom) — mirrored */}
+          <div
+            className="flex flex-col shrink-0"
+            style={{ gap: DESKTOP_REGION_GAP }}
+          >
             <RegionBracketMirrored
               region={state.regions[2]}
               onSelectTeam={handleSelectTeam}
@@ -243,6 +233,34 @@ export const FullBracket = () => {
           </div>
         </div>
       </div>
+      {!!state.firstFour?.length && (
+        <section
+          aria-label="First Four"
+          aria-busy={saving}
+          className="mt-12 border-t border-gray-200 pt-6"
+        >
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-gray-600">
+            First Four
+          </h2>
+          <fieldset
+            disabled={saving}
+            className="grid min-w-0 grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4"
+          >
+            {state.firstFour.map((match) => (
+              <div key={match.id} className="min-w-0">
+                <div className="mb-2 text-xs font-bold text-gray-500">
+                  {match.region}
+                </div>
+                <MatchCard
+                  match={match}
+                  onSelectTeam={handleSelectTeam}
+                  width="100%"
+                />
+              </div>
+            ))}
+          </fieldset>
+        </section>
+      )}
     </div>
   );
 };

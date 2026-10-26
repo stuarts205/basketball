@@ -67,9 +67,82 @@ const teamLogoIds: Record<string, string> = {
   Yale: "43",
 };
 
+const teamPrimaryColors: Record<string, string> = {
+  Akron: "#00285e",
+  Alabama: "#9e1632",
+  Arizona: "#0c234b",
+  Arkansas: "#a41f35",
+  Auburn: "#002b5c",
+  Baylor: "#154734",
+  Boise: "#0033a0",
+  "Boise State": "#0033a0",
+  Columbia: "#7ba4db",
+  Colgate: "#821019",
+  Colorado: "#000000",
+  Creighton: "#005ca9",
+  Dayton: "#004b8d",
+  Drake: "#005596",
+  Duke: "#013088",
+  "Eastern Washington": "#a10022",
+  Florida: "#0021a5",
+  "Florida Atlantic": "#00447c",
+  "Grand Canyon": "#522398",
+  Gonzaga: "#041e42",
+  Howard: "#003a63",
+  Houston: "#c92a39",
+  Illinois: "#ff5f05",
+  Indiana: "#990000",
+  Iowa: "#000000",
+  "Iowa State": "#822433",
+  Kansas: "#0051ba",
+  Kentucky: "#0033a0",
+  Liberty: "#071740",
+  "Liberty Tech": "#071740",
+  Longwood: "#003273",
+  Marquette: "#003366",
+  Memphis: "#004991",
+  Miami: "#005030",
+  "Michigan State": "#18453b",
+  "Mississippi State": "#5d1725",
+  "Montana State": "#00205c",
+  Nevada: "#002d62",
+  "New Mexico": "#000000",
+  "North Carolina": "#7bafd4",
+  "Northern Kentucky": "#ffc82e",
+  Oklahoma: "#a32036",
+  Providence: "#000000",
+  Purdue: "#000000",
+  "Saint Mary's": "#d80024",
+  "San Diego State": "#c41230",
+  "Seton Hall": "#0857b1",
+  "South Dakota State": "#0033a0",
+  TCU: "#4d1979",
+  Tennessee: "#ff8200",
+  Texas: "#c15d26",
+  "Texas A&M": "#500000",
+  Toledo: "#0a2240",
+  UAB: "#054338",
+  "UNC Wilmington": "#00665e",
+  UCLA: "#2774ae",
+  UConn: "#0c2340",
+  Utah: "#ea002a",
+  "Utah State": "#00263a",
+  Vermont: "#154734",
+  "Vermont State": "#154734",
+  Villanova: "#00205b",
+  VCU: "#ffaf00",
+  Wagner: "#00483a",
+  Wisconsin: "#c4012f",
+  Yale: "#004a81",
+};
+
 export function getTeamLogoUrl(teamName: string) {
   const logoId = teamLogoIds[teamName];
   return logoId
     ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${logoId}.png`
     : undefined;
+}
+
+export function getTeamPrimaryColor(teamName: string) {
+  return teamPrimaryColors[teamName];
 }
