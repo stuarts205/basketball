@@ -12,9 +12,13 @@ export const MatchCard = ({
   onSelectTeam: (match: Match, team: Team) => void;
   width?: number | string;
 }) => {
+  const pickedCorrectly =
+    match.winner != null &&
+    match.actualWinner != null &&
+    match.winner.name === match.actualWinner.name;
   return (
     <div
-      className="pointer-events-auto shrink-0 flex flex-col justify-center bg-white rounded-lg shadow-md overflow-hidden"
+      className={`pointer-events-auto shrink-0 flex flex-col justify-center bg-white rounded-lg shadow-md overflow-hidden ${pickedCorrectly ? "ring-2 ring-green-600" : ""}`}
       style={{ width, height: CARD_H }}
     >
       {match.actualWinner && (
@@ -45,25 +49,34 @@ export const MatchCard = ({
           team?.name ??
           pendingTeams?.map((candidate) => candidate.name).join("/") ??
           "";
-        const isWinner = team != null && match.winner?.name === team.name;
-        const isActualWinner =
-          team != null && match.actualWinner?.name === team.name;
-        const isCorrectPick = isWinner && isActualWinner;
-        const isMissedPick =
-          isWinner && match.actualWinner != null && !isActualWinner;
         // A team the user advanced here that was knocked out in an earlier game.
         const actualTeam = match.actualTeams?.[i];
         const isEliminated =
           team != null && actualTeam != null && actualTeam.name !== team.name;
+        // Show the team that actually advanced, keeping the user's pick as a note.
+        const shownTeam = isEliminated ? actualTeam : team;
+        const shownName = isEliminated ? actualTeam.name : teamName;
+        const isWinner = team != null && match.winner?.name === team.name;
+        const isActualWinner =
+          shownTeam != null && match.actualWinner?.name === shownTeam.name;
+        const isCorrectPick = isWinner && isActualWinner;
+        const isMissedPick =
+          isWinner &&
+          match.actualWinner != null &&
+          match.actualWinner.name !== team.name;
         const isStruck = isMissedPick || isEliminated;
         const score = match.score[i];
-        const logoUrl = team
-          ? team.logo || getTeamLogoUrl(team.name)
+        const logoUrl = shownTeam
+          ? shownTeam.logo || getTeamLogoUrl(shownTeam.name)
           : undefined;
         return (
           <button
             key={i}
-            title={teamName || undefined}
+            title={
+              isEliminated
+                ? `${shownName} (your pick: ${teamName})`
+                : teamName || undefined
+            }
             onClick={() => team && onSelectTeam(match, team)}
             disabled={!team}
             style={{ height: ROW_H, width: "100%" }}
@@ -82,7 +95,7 @@ export const MatchCard = ({
             <span
               className={`text-[11px] w-4 shrink-0 ${isWinner ? "text-gray-500" : "text-gray-300"}`}
             >
-              {team?.seed ?? pendingTeams?.[0]?.seed ?? ""}
+              {shownTeam?.seed ?? pendingTeams?.[0]?.seed ?? ""}
             </span>
             {logoUrl && (
               <Image
@@ -96,7 +109,12 @@ export const MatchCard = ({
             <span
               className={`min-w-0 flex-1 ${pendingTeams ? "text-[10px] leading-3 whitespace-normal break-words text-gray-500" : "truncate text-sm"}`}
             >
-              {teamName}
+              {shownName}
+              {isEliminated && (
+                <span className="ml-1 text-[9px] font-normal text-red-400 line-through">
+                  {teamName}
+                </span>
+              )}
             </span>
             {isStruck ? (
               <span

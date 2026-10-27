@@ -345,7 +345,7 @@ export const FullBracket = ({
       >
         <div
           ref={desktopContentRef}
-          className={`flex min-w-max items-start gap-0 ${desktopSize === null ? "" : "absolute left-1/2 top-0"}`}
+          className={`flex min-w-max items-start gap-0 p-8 ${desktopSize === null ? "" : "absolute left-1/2 top-0"}`}
           style={
             desktopSize === null
               ? undefined
