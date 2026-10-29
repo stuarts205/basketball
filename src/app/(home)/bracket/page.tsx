@@ -18,6 +18,7 @@ import { games } from "@/db/schema";
 import { LoadBracketButton } from "@/components/load-bracket-button";
 import { EmptyBracket } from "@/components/empty-bracket";
 import { NewBracketModal } from "@/components/new-bracket-modal";
+import { PageHeader } from "@/components/page-header";
 import { hasNamedBracket, listBrackets } from "@/lib/brackets";
 
 export const dynamic = "force-dynamic";
@@ -100,16 +101,14 @@ export default async function BracketPage({
   return (
     <div className="min-h-screen bg-court p-6 pt-16 lg:px-3 lg:pt-6">
       <div className="w-full min-w-0 mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold mb-1 text-gray-800">
-            {year} NCAA Tournament
-          </h1>
-          <p className="text-sm text-gray-400">
-            {activeGroup
+        <PageHeader
+          title={`${year} NCAA Tournament`}
+          subtitle={
+            activeGroup
               ? `${activeBracket?.name ?? "Your picks"} for ${activeGroup.name}. Click any team to advance them to the next round`
-              : "Click any team to advance them to the next round"}
-          </p>
-        </div>
+              : "Click any team to advance them to the next round"
+          }
+        />
         {/* The bracket stays hidden until its name is saved. */}
         {!mustNameBracket && (
           <FullBracket

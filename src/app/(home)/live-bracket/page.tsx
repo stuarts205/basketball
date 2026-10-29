@@ -1,5 +1,6 @@
 import React from "react";
 import { LiveBracketView } from "@/components/live-bracket-view";
+import { PageHeader } from "@/components/page-header";
 import { loadCbsBracket } from "@/lib/cbs-bracket";
 
 export const dynamic = "force-dynamic";
@@ -15,14 +16,10 @@ export default async function LiveBracket() {
   return (
     <div className="min-h-screen bg-court p-6 pt-16 lg:px-3 lg:pt-6">
       <div className="w-full min-w-0 mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold mb-1 text-gray-800">
-            {bracket ? `${bracket.year} NCAA Tournament` : "NCAA Tournament"}
-          </h1>
-          <p className="text-sm text-gray-400">
-            Every game and result in the tournament
-          </p>
-        </div>
+        <PageHeader
+          title={bracket ? `${bracket.year} NCAA Tournament` : "NCAA Tournament"}
+          subtitle="Every game and result in the tournament"
+        />
         {bracket ? (
           <LiveBracketView state={bracket.state} />
         ) : (

@@ -14,23 +14,27 @@ export const ChampionCard = ({
 
   return (
     <div
-      className="flex flex-col items-center gap-2 rounded-lg border-2 border-gray-200 bg-white px-3 py-4 text-center shadow-md"
+      className="flex flex-col items-center gap-2 rounded-xl border-2 border-gray-200 bg-white px-4 pb-4 pt-3 text-center shadow-lg"
       style={{ width, ...(teamColor ? { borderColor: teamColor } : {}) }}
     >
-      <div className="flex min-w-0 items-center justify-center gap-2">
-        {logoUrl && (
-          <Image
-            src={logoUrl}
-            alt=""
-            width={36}
-            height={36}
-            className="h-9 w-9 shrink-0 object-contain"
-          />
+      <span className="text-xl font-black uppercase tracking-tight text-gray-900">
+        Champion
+      </span>
+      {logoUrl && (
+        <Image
+          src={logoUrl}
+          alt=""
+          width={80}
+          height={80}
+          className="h-20 w-20 object-contain"
+        />
+      )}
+      <span className="flex max-w-full items-baseline gap-1 text-base font-bold text-gray-900">
+        {team.seed > 0 && (
+          <span className="text-xs font-normal text-gray-400">{team.seed}</span>
         )}
-        <span className="truncate text-base font-semibold text-gray-800">
-          {team.name}
-        </span>
-      </div>
+        <span className="truncate">{team.name}</span>
+      </span>
     </div>
   );
 };

@@ -32,11 +32,16 @@ export const CARD_W = 190;
 export const CARD_H = 72;
 export const ROW_H = 28;
 export const BASE_GAP = 8;
-export const COL_LABEL_H = 24;
+// Space between a region's name and its first games (Tailwind gap-3).
+export const REGION_NAME_GAP = 12;
+// The strip above each region's games: the 24px region name and the gap.
+export const COL_LABEL_H = 24 + REGION_NAME_GAP;
 export const CONNECTOR_W = 24;
 // Elite 8 cards slide back so the vertical connector runs through their middle.
-export const ROUND_INSETS = [0, 0, CARD_W * 0.75, CONNECTOR_W + CARD_W / 2];
+export const ROUND_INSETS = [0, 0, CARD_W * 0.6, CONNECTOR_W + CARD_W / 2];
 export const DESKTOP_REGION_GAP = 240;
+// Space between a region's round names and its region name (Tailwind gap-6).
+export const ROUND_NAMES_GAP = 24;
 
 export const GROUP_NAME_MAX_LENGTH = 50;
 

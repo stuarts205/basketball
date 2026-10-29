@@ -4,11 +4,13 @@ import {
   CONNECTOR_W,
   DESKTOP_REGION_GAP,
   Match,
+  ROUND_NAMES_GAP,
   Team,
 } from "@/lib/types";
 import { roundLayout } from "@/lib/utils";
 import React from "react";
 import { ChampionCard } from "./champion-card";
+import { ChampionshipCard } from "./championship-card";
 import { MatchCard } from "./match-card";
 
 export const FinalFourCenter = ({
@@ -21,7 +23,8 @@ export const FinalFourCenter = ({
   onSelectTeam: (match: Match, team: Team) => void;
 }) => {
   const { gap: firstRoundGap } = roundLayout(0);
-  const regionHeaderHeight = 24;
+  // A region's round-names row (24px) and the gap under it.
+  const regionHeaderHeight = 24 + ROUND_NAMES_GAP;
   const regionGap = DESKTOP_REGION_GAP;
   const regionHeight =
     regionHeaderHeight + COL_LABEL_H + 8 * CARD_H + 7 * firstRoundGap;
@@ -32,7 +35,7 @@ export const FinalFourCenter = ({
 
   const FF_W = 200;
   const COL_W = FF_W + CONNECTOR_W * 2;
-  const championshipWidth = 260;
+  const championshipWidth = 360;
   const championshipLeft = (COL_W - championshipWidth) / 2;
   const semifinalGap = CONNECTOR_W * 2;
   const leftSemifinal = championshipLeft - semifinalGap - FF_W;
@@ -59,24 +62,10 @@ export const FinalFourCenter = ({
           strokeWidth={1.75}
         />
       </svg>
-      {championship.winner && (
-        <div
-          className="absolute"
-          style={{ left: (COL_W - 220) / 2, top: champY + CARD_H + 32 }}
-        >
-          <ChampionCard team={championship.winner} />
-        </div>
-      )}
-
       <div
         className="absolute"
         style={{ left: leftSemifinal, top: champY, width: FF_W }}
       >
-        <div className="absolute bottom-full mb-3 w-full text-center text-[11px] font-extrabold uppercase tracking-widest">
-          <span className="inline-block rounded-full bg-sideline-900/85 px-3 py-0.5 text-white shadow-sm">
-            Final Four
-          </span>
-        </div>
         <MatchCard match={ff[0]} onSelectTeam={onSelectTeam} width={FF_W} />
       </div>
 
@@ -84,32 +73,30 @@ export const FinalFourCenter = ({
         className="absolute"
         style={{ left: rightSemifinal, top: champY, width: FF_W }}
       >
-        <div className="absolute bottom-full mb-3 w-full text-center text-[11px] font-extrabold uppercase tracking-widest">
-          <span className="inline-block rounded-full bg-sideline-900/85 px-3 py-0.5 text-white shadow-sm">
-            Final Four
-          </span>
-        </div>
         <MatchCard match={ff[1]} onSelectTeam={onSelectTeam} width={FF_W} />
       </div>
 
+      {/* The title game is centered on the semifinal lines, with the
+          champion just below it. */}
       <div
         className="absolute"
         style={{
           left: championshipLeft,
-          top: champY,
+          top: champCenterY,
           width: championshipWidth,
+          transform: "translateY(-50%)",
         }}
       >
-        <div className="absolute bottom-full mb-3 w-full text-center text-[11px] font-extrabold uppercase tracking-widest">
-          <span className="inline-block rounded-full bg-sideline-900/85 px-3 py-0.5 text-white shadow-sm">
-            Championship
-          </span>
-        </div>
-        <MatchCard
+        <ChampionshipCard
           match={championship}
           onSelectTeam={onSelectTeam}
           width={championshipWidth}
         />
+        {championship.winner && (
+          <div className="absolute left-1/2 top-full mt-6 -translate-x-1/2">
+            <ChampionCard team={championship.winner} />
+          </div>
+        )}
       </div>
     </div>
   );

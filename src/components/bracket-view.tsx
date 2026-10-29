@@ -3,6 +3,7 @@ import { BracketState, DESKTOP_REGION_GAP, Match, Team } from "@/lib/types";
 import React, { useLayoutEffect, useRef, useState } from "react";
 import { RegionBracket } from "./region-bracket";
 import { ChampionCard } from "./champion-card";
+import { ChampionshipCard } from "./championship-card";
 import { MatchCard } from "./match-card";
 import { FinalFourCenter } from "./final-four-center";
 import { RegionBracketMirrored } from "./region-bracket-mirrored";
@@ -56,8 +57,10 @@ export const BracketView = ({
           aria-busy={busy}
           className="mb-8 border-b border-gray-200 pb-6"
         >
-          <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-gray-600">
-            First Four
+          <h2 className="mb-4 text-[11px] font-extrabold uppercase tracking-widest">
+            <span className="inline-block rounded-full bg-sideline-900/85 px-3 py-0.5 text-white shadow-sm">
+              First Four
+            </span>
           </h2>
           <fieldset
             disabled={busy}
@@ -65,8 +68,10 @@ export const BracketView = ({
           >
             {state.firstFour.map((match) => (
               <div key={match.id} className="min-w-0">
-                <div className="mb-2 text-xs font-bold text-gray-500">
-                  {match.region}
+                <div className="mb-2 text-sm font-black uppercase tracking-widest">
+                  <span className="inline-block rounded-full bg-sideline-900/85 px-3 leading-5 text-white shadow-sm">
+                    {match.region}
+                  </span>
                 </div>
                 <MatchCard
                   match={match}
@@ -99,13 +104,6 @@ export const BracketView = ({
 
         {/* Final Four — simplified stacked layout at bottom on mobile */}
         <div className="mx-auto flex w-full max-w-lg flex-col gap-3">
-          <div className="mb-1">
-            <div className="text-[11px] font-extrabold uppercase tracking-widest">
-              <span className="inline-block rounded-full bg-sideline-900/85 px-3 py-0.5 text-white shadow-sm">
-                Final Four
-              </span>
-            </div>
-          </div>
           <div className="grid grid-cols-2 gap-3">
             <MatchCard
               match={state.ff[0]}
@@ -133,13 +131,11 @@ export const BracketView = ({
               />
             </svg>
           </div>
-          <div className="w-full">
-            <MatchCard
-              match={state.championship}
-              onSelectTeam={onSelectTeam}
-              width="100%"
-            />
-          </div>
+          <ChampionshipCard
+            match={state.championship}
+            onSelectTeam={onSelectTeam}
+            width="100%"
+          />
           {state.championship.winner && (
             <ChampionCard team={state.championship.winner} width="100%" />
           )}
@@ -182,6 +178,7 @@ export const BracketView = ({
             <RegionBracket
               region={state.regions[1]}
               onSelectTeam={onSelectTeam}
+              showRoundNames={false}
             />
           </div>
 
@@ -204,6 +201,7 @@ export const BracketView = ({
             <RegionBracketMirrored
               region={state.regions[3]}
               onSelectTeam={onSelectTeam}
+              showRoundNames={false}
             />
           </div>
         </div>

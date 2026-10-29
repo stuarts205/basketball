@@ -4,6 +4,8 @@ import {
   Match,
   Region,
   ROUND_INSETS,
+  REGION_NAME_GAP,
+  ROUND_NAMES_GAP,
   Team,
 } from "@/lib/types";
 import React from "react";
@@ -14,16 +16,42 @@ import { MatchCard } from "./match-card";
 export const RegionBracket = ({
   region,
   onSelectTeam,
+  showRoundNames = true,
 }: {
   region: Region;
   onSelectTeam: (match: Match, team: Team) => void;
+  // Off for a region drawn under another, whose names already label the columns.
+  showRoundNames?: boolean;
 }) => {
   return (
     <div className="isolate flex flex-col items-start shrink-0">
-      <div className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 pl-1">
-        {region.name}
+      {/* Round names on top, then the region name just above the games. Each
+          row is 24px tall with ROUND_NAMES_GAP between them: FinalFourCenter
+          lines up with the regions assuming that. The columns overlap, so the round names are spread across the
+          region rather than set over each column. */}
+      <div
+        className="flex h-6 items-center justify-between self-stretch px-1 text-[10px] font-extrabold uppercase tracking-widest"
+        style={{ marginBottom: ROUND_NAMES_GAP }}
+      >
+        {showRoundNames &&
+          region.rounds.map((round) => (
+            <span
+              key={round.name}
+              className="rounded-full bg-sideline-900/85 px-2.5 leading-[18px] text-white shadow-sm"
+            >
+              {round.name}
+            </span>
+          ))}
       </div>
-      <div className="flex items-start">
+      <div className="relative flex items-start">
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center pl-1 text-sm font-black uppercase tracking-widest"
+          style={{ height: COL_LABEL_H - REGION_NAME_GAP }}
+        >
+          <span className="rounded-full bg-sideline-900/85 px-3 leading-5 text-white shadow-sm">
+            {region.name}
+          </span>
+        </div>
         {region.rounds.map((round, ri) => (
           <div
             key={round.name}
@@ -32,25 +60,7 @@ export const RegionBracket = ({
           >
             {ri > 0 && <ConnectorLines roundIndex={ri} />}
             <div className="pointer-events-none relative z-10 flex flex-col shrink-0">
-              <div
-                className="text-[10px] font-extrabold uppercase tracking-widest text-center"
-                style={{
-                  width: CARD_W,
-                  height: COL_LABEL_H,
-                  lineHeight: `${COL_LABEL_H}px`,
-                  ...(ri >= 2
-                    ? {
-                        transform: `translateY(${roundLayout(ri).topPad}px)`,
-                        textAlign: "right",
-                        paddingRight: 4,
-                      }
-                    : {}),
-                }}
-              >
-                <span className="inline-block rounded-full bg-sideline-900/85 px-2.5 align-middle leading-[18px] text-white shadow-sm">
-                  {round.name}
-                </span>
-              </div>
+              <div style={{ width: CARD_W, height: COL_LABEL_H }} />
               <div
                 className="flex flex-col shrink-0"
                 style={{

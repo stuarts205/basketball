@@ -3,6 +3,65 @@ import Image from "next/image";
 import React from "react";
 import { getTeamLogoUrl } from "@/lib/team-logos";
 
+// A game with a result can't be picked any more.
+export function isFinished(match: Match) {
+  return match.status === "final" || match.actualWinner != null;
+}
+
+export function pickedCorrectly(match: Match) {
+  return (
+    match.winner != null &&
+    match.actualWinner != null &&
+    match.winner.name === match.actualWinner.name
+  );
+}
+
+// What to show for one of a game's two team slots: the user's pick, the
+// team that actually played there, and how the pick turned out.
+export function slotInfo(match: Match, i: number) {
+  const team = match.teams[i];
+  const pendingTeams = !team ? match.pendingTeams?.[i as 0 | 1] : undefined;
+  const teamName =
+    team?.name ??
+    pendingTeams?.map((candidate) => candidate.name).join("/") ??
+    "";
+  // A team the user advanced here that was knocked out in an earlier game.
+  const actualTeam = match.actualTeams?.[i];
+  const isEliminated =
+    team != null && actualTeam != null && actualTeam.name !== team.name;
+  // Show the team that actually advanced, keeping the user's pick as a note.
+  const shownTeam = isEliminated ? actualTeam : team;
+  const shownName = isEliminated ? actualTeam.name : teamName;
+  const isWinner = team != null && match.winner?.name === team.name;
+  const isActualWinner =
+    shownTeam != null && match.actualWinner?.name === shownTeam.name;
+  const isCorrectPick = isWinner && isActualWinner;
+  const isMissedPick =
+    isWinner &&
+    match.actualWinner != null &&
+    match.actualWinner.name !== team.name;
+  const logoUrl = shownTeam
+    ? shownTeam.logo || getTeamLogoUrl(shownTeam.name)
+    : undefined;
+  return {
+    team,
+    pendingTeams,
+    teamName,
+    isEliminated,
+    shownTeam,
+    shownName,
+    isWinner,
+    isActualWinner,
+    isCorrectPick,
+    isStruck: isMissedPick || isEliminated,
+    // Bold for the team that won: the real winner once there is one,
+    // otherwise the user's pick.
+    isLeading: match.actualWinner ? isActualWinner : isWinner,
+    score: match.score[i],
+    logoUrl,
+  };
+}
+
 export const MatchCard = ({
   match,
   onSelectTeam,
@@ -12,15 +71,10 @@ export const MatchCard = ({
   onSelectTeam: (match: Match, team: Team) => void;
   width?: number | string;
 }) => {
-  const pickedCorrectly =
-    match.winner != null &&
-    match.actualWinner != null &&
-    match.winner.name === match.actualWinner.name;
-  // A game with a result can't be picked any more.
-  const finished = match.status === "final" || match.actualWinner != null;
+  const finished = isFinished(match);
   return (
     <div
-      className={`pointer-events-auto shrink-0 flex flex-col justify-center bg-white rounded-lg shadow-md overflow-hidden ${pickedCorrectly ? "ring-2 ring-green-600" : ""}`}
+      className={`pointer-events-auto shrink-0 flex flex-col justify-center bg-white rounded-lg shadow-md overflow-hidden ${pickedCorrectly(match) ? "ring-2 ring-green-600" : ""}`}
       style={{ width, height: CARD_H }}
     >
       {match.actualWinner && (
@@ -43,34 +97,21 @@ export const MatchCard = ({
             ? "Live"
             : ""}
       </div> */}
-      {match.teams.map((team, i) => {
-        const pendingTeams = !team
-          ? match.pendingTeams?.[i as 0 | 1]
-          : undefined;
-        const teamName =
-          team?.name ??
-          pendingTeams?.map((candidate) => candidate.name).join("/") ??
-          "";
-        // A team the user advanced here that was knocked out in an earlier game.
-        const actualTeam = match.actualTeams?.[i];
-        const isEliminated =
-          team != null && actualTeam != null && actualTeam.name !== team.name;
-        // Show the team that actually advanced, keeping the user's pick as a note.
-        const shownTeam = isEliminated ? actualTeam : team;
-        const shownName = isEliminated ? actualTeam.name : teamName;
-        const isWinner = team != null && match.winner?.name === team.name;
-        const isActualWinner =
-          shownTeam != null && match.actualWinner?.name === shownTeam.name;
-        const isCorrectPick = isWinner && isActualWinner;
-        const isMissedPick =
-          isWinner &&
-          match.actualWinner != null &&
-          match.actualWinner.name !== team.name;
-        const isStruck = isMissedPick || isEliminated;
-        const score = match.score[i];
-        const logoUrl = shownTeam
-          ? shownTeam.logo || getTeamLogoUrl(shownTeam.name)
-          : undefined;
+      {match.teams.map((_, i) => {
+        const {
+          team,
+          pendingTeams,
+          teamName,
+          isEliminated,
+          shownTeam,
+          shownName,
+          isWinner,
+          isCorrectPick,
+          isStruck,
+          isLeading,
+          score,
+          logoUrl,
+        } = slotInfo(match, i);
         return (
           <button
             key={i}
@@ -139,7 +180,7 @@ export const MatchCard = ({
             )}
             {score != null && (
               <span
-                className={`shrink-0 text-sm tabular-nums ${(match.actualWinner ? isActualWinner : isWinner) ? "font-bold text-gray-900" : "font-normal text-gray-400"}`}
+                className={`shrink-0 text-sm tabular-nums ${isLeading ? "font-bold text-gray-900" : "font-normal text-gray-400"}`}
               >
                 {score}
               </span>
