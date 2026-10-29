@@ -8,6 +8,7 @@ import {
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { hasNamedBracket, listBrackets } from "@/lib/brackets";
 
 export default async function HomeLayout({
   children,
@@ -26,6 +27,11 @@ export default async function HomeLayout({
     userGroups,
     cookieStore.get(ACTIVE_GROUP_COOKIE)?.value,
   );
+  // Brackets show in the menu once the user has named one in the group.
+  const userBrackets =
+    activeGroup && (await hasNamedBracket(session.user.id, activeGroup.id))
+      ? await listBrackets(session.user.id, activeGroup.id)
+      : [];
   const joinedIds = new Set(userGroups.map((group) => group.id));
   const joinableGroups = allGroups.filter((group) => !joinedIds.has(group.id));
 
@@ -37,6 +43,7 @@ export default async function HomeLayout({
         groups={userGroups}
         activeGroupId={activeGroup?.id ?? null}
         joinableGroups={joinableGroups}
+        brackets={userBrackets}
       />
       <main className="min-w-0 flex-1">{children}</main>
     </div>

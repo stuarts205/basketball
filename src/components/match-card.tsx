@@ -16,6 +16,8 @@ export const MatchCard = ({
     match.winner != null &&
     match.actualWinner != null &&
     match.winner.name === match.actualWinner.name;
+  // A game with a result can't be picked any more.
+  const finished = match.status === "final" || match.actualWinner != null;
   return (
     <div
       className={`pointer-events-auto shrink-0 flex flex-col justify-center bg-white rounded-lg shadow-md overflow-hidden ${pickedCorrectly ? "ring-2 ring-green-600" : ""}`}
@@ -77,8 +79,8 @@ export const MatchCard = ({
                 ? `${shownName} (your pick: ${teamName})`
                 : teamName || undefined
             }
-            onClick={() => team && onSelectTeam(match, team)}
-            disabled={!team}
+            onClick={() => team && !finished && onSelectTeam(match, team)}
+            disabled={!team || finished}
             style={{ height: ROW_H, width: "100%" }}
             className={[
               "flex items-center gap-2 px-3 text-left transition-colors",
@@ -88,8 +90,10 @@ export const MatchCard = ({
                 : isWinner
                     ? "font-bold text-gray-900"
                     : "text-gray-400",
-              team && !isWinner ? "hover:bg-gray-50 cursor-pointer" : "",
-              !team ? "cursor-default" : "",
+              team && !isWinner && !finished
+                ? "hover:bg-gray-50 cursor-pointer"
+                : "",
+              !team || finished ? "cursor-default" : "",
             ].join(" ")}
           >
             <span

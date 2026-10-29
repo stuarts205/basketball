@@ -11,6 +11,9 @@ import { auth } from "@/lib/auth";
 import {
   copyPicksIntoEmptyGroup, joinGroup, listBracketChoices, pickSourcesFor,
 } from "@/lib/groups";
+import {
+  DEFAULT_BRACKET_NAME, createBracket, hasNamedBracket, listBrackets,
+} from "@/lib/brackets";
 import { bracketMatches, loadBracketFromDatabase } from "@/lib/load-bracket";
 import type { BracketState, Match } from "@/lib/types";
 import { DELETE, PUT } from "./route";
@@ -162,7 +165,8 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
                 userId: activeSession.user.id, groupId: mainGroup,
                 gameId: idByGameId.get(match.id)!, winnerTeamId,
               }).onConflictDoUpdate({
-                target: [picks.userId, picks.groupId, picks.gameId], set: { winnerTeamId },
+                target: [picks.userId, picks.groupId, picks.bracketNumber, picks.gameId],
+                set: { winnerTeamId },
               });
             }
           }
@@ -401,6 +405,83 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           assert.deepEqual(await pickSourcesFor("user-a", otherGroup, tx), []);
           assert.deepEqual(
             (await loadBracketFromDatabase(undefined, tx)).state, anonymous.state,
+          );
+
+          // Up to three brackets per group, each with its own picks.
+          activeSession = sessionFor("user-a");
+          const firstBracket = await loadBracketFromDatabase(
+            { userId: "user-a", groupId: mainGroup }, tx,
+          );
+          const putInBracket = (bracket: unknown) => PUT(new Request("http://localhost/api/games/winner", {
+            method: "PUT",
+            body: JSON.stringify({ groupId: mainGroup, bracket, gameId: "east-r64-1", teamName: "Siena" }),
+          }));
+          assert.equal((await putInBracket(2)).status, 404, "bracket 2 must be created first");
+          assert.equal((await putInBracket(4)).status, 400);
+          assert.equal((await putInBracket("two")).status, 400);
+          assert.deepEqual(await listBrackets("user-a", mainGroup, tx), [
+            { number: 1, name: DEFAULT_BRACKET_NAME },
+          ]);
+          assert.deepEqual(await createBracket("user-a", mainGroup, "Upsets"), { number: 2, name: "Upsets" });
+          assert.deepEqual(await createBracket("user-a", mainGroup, "Chalk"), { number: 3, name: "Chalk" });
+          assert.equal(await createBracket("user-a", mainGroup, "Fourth"), "full");
+          assert.equal(await createBracket("user-a", outsiderGroup, "Nope"), "not-member");
+          assert.deepEqual(
+            (await listBrackets("user-a", mainGroup, tx)).map((bracket) => bracket.name),
+            [DEFAULT_BRACKET_NAME, "Upsets", "Chalk"],
+          );
+          assert.deepEqual(await listBrackets("user-b", mainGroup, tx), [
+            { number: 1, name: DEFAULT_BRACKET_NAME },
+          ]);
+          // Naming the first bracket names bracket 1, once, and keeps its picks.
+          assert.equal(await hasNamedBracket("user-b", mainGroup, tx), false);
+          const userBFirst = await loadBracketFromDatabase({ userId: "user-b", groupId: mainGroup }, tx);
+          assert.deepEqual(
+            await createBracket("user-b", mainGroup, "B's picks", { first: true }),
+            { number: 1, name: "B's picks" },
+          );
+          assert.equal(await createBracket("user-b", mainGroup, "Again", { first: true }), "exists");
+          assert.equal(await hasNamedBracket("user-b", mainGroup, tx), true);
+          assert.deepEqual(await listBrackets("user-b", mainGroup, tx), [
+            { number: 1, name: "B's picks" },
+          ]);
+          assert.deepEqual(
+            (await loadBracketFromDatabase({ userId: "user-b", groupId: mainGroup }, tx)).state,
+            userBFirst.state,
+          );
+          assert.deepEqual(await createBracket("user-b", mainGroup, "B two"), { number: 2, name: "B two" });
+          const secondPick = await putInBracket(2);
+          assert.equal(secondPick.status, 200);
+          const secondOwner = { userId: "user-a", groupId: mainGroup, bracketNumber: 2 };
+          const secondState = (await loadBracketFromDatabase(secondOwner, tx)).state;
+          assert.deepEqual((await secondPick.json()).state, secondState);
+          assert.equal(
+            bracketMatches(secondState).find((match) => match.id === "east-r64-1")?.winner?.name,
+            "Siena",
+          );
+          assert.deepEqual(
+            (await loadBracketFromDatabase({ userId: "user-a", groupId: mainGroup }, tx)).state,
+            firstBracket.state,
+            "picks in bracket 2 must not touch bracket 1",
+          );
+          assert.deepEqual(
+            (await loadBracketFromDatabase({ ...secondOwner, bracketNumber: 3 }, tx)).state,
+            anonymous.state,
+          );
+          const resetSecond = await DELETE(new Request(
+            `http://localhost/api/games/winner?groupId=${mainGroup}&bracket=2`, { method: "DELETE" },
+          ));
+          assert.equal(resetSecond.status, 200);
+          assert.deepEqual((await resetSecond.json()).state, anonymous.state);
+          assert.deepEqual(
+            (await loadBracketFromDatabase({ userId: "user-a", groupId: mainGroup }, tx)).state,
+            firstBracket.state,
+            "resetting bracket 2 must not touch bracket 1",
+          );
+          // A user's extra brackets don't show up as sources for copying.
+          assert.equal(
+            (await listBracketChoices("user-a", tx)).find((choice) => choice.id === mainGroup)?.pickCount,
+            bracketMatches(firstBracket.state).filter((match) => match.winner).length,
           );
 
           const olderGameId = randomUUID();

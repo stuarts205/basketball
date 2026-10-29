@@ -40,6 +40,18 @@ export const DESKTOP_REGION_GAP = 240;
 
 export const GROUP_NAME_MAX_LENGTH = 50;
 
+// Each member can fill out up to this many brackets in a group.
+export const MAX_BRACKETS = 3;
+export const BRACKET_NAME_MAX_LENGTH = 50;
+// What bracket 1 is called until the user names it.
+export const DEFAULT_BRACKET_NAME = "My Bracket";
+
+// One of the user's brackets in a group. Bracket 1 always exists.
+export type BracketSummary = {
+  number: number;
+  name: string;
+};
+
 // Private groups are joined with a PIN of this many digits.
 export const GROUP_PIN_PATTERN = /^\d{4,8}$/;
 

@@ -16,11 +16,16 @@ export const FullBracket = ({
   initialState,
   groupId,
   groupName,
+  bracketNumber,
+  bracketName,
 }: {
   initialState: BracketState;
   // The group whose bracket is shown; picks are saved only with one.
   groupId: string | null;
   groupName: string | null;
+  // Which of the user's brackets in the group this is.
+  bracketNumber: number;
+  bracketName: string | null;
 }) => {
   const canEdit = groupId !== null;
   const [state, setState] = useState(initialState);
@@ -63,7 +68,7 @@ export const FullBracket = ({
     setResetError(null);
     try {
       const response = await fetch(
-        `/api/games/winner?groupId=${encodeURIComponent(groupId)}`,
+        `/api/games/winner?groupId=${encodeURIComponent(groupId)}&bracket=${bracketNumber}`,
         { method: "DELETE" },
       );
       if (!response.ok) {
@@ -124,6 +129,7 @@ export const FullBracket = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           groupId,
+          bracket: bracketNumber,
           gameId: match.id,
           teamName: team.name,
         }),
@@ -185,9 +191,13 @@ export const FullBracket = ({
             className="flex items-center gap-2 rounded-full border border-red-200 bg-white py-1 pl-4 pr-1 text-sm shadow-sm"
           >
             <span className="text-gray-800">
-              Clear your picks for{" "}
+              Clear your picks in{" "}
+              <span className="font-semibold">
+                {bracketName ?? "this bracket"}
+              </span>{" "}
+              for{" "}
               <span className="font-semibold">{groupName ?? "this group"}</span>
-              ? Other groups won&apos;t change.
+              ? Your other brackets won&apos;t change.
             </span>
             <button
               type="button"

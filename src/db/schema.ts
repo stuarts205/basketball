@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   foreignKey,
   index,
   integer,
@@ -83,12 +84,46 @@ export const groupMembers = pgTable(
     joinedAt: timestamp("joined_at").defaultNow().notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.groupId, table.userId] }),
+    // The name and column order match how `drizzle-kit push` reads this key
+    // back from the database; otherwise it tries to recreate it and fails on
+    // the picks foreign key that depends on it.
+    primaryKey({
+      name: "group_members_group_id_user_id_pk",
+      columns: [table.userId, table.groupId],
+    }),
     index("group_members_user_id_idx").on(table.userId),
   ],
 );
 
-// Picks belong to a membership, so each group has its own bracket per user
+// Names for a member's brackets in a group. Bracket 1 always exists, with or
+// without a row; brackets 2 and 3 exist once they have a row.
+export const brackets = pgTable(
+  "brackets",
+  {
+    groupId: uuid("group_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    number: integer("number").notNull(),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Column order matches how `drizzle-kit push` reads this key back, as for
+    // group_members above.
+    primaryKey({
+      name: "brackets_group_id_user_id_number_pk",
+      columns: [table.userId, table.number, table.groupId],
+    }),
+    foreignKey({
+      columns: [table.groupId, table.userId],
+      foreignColumns: [groupMembers.groupId, groupMembers.userId],
+    }).onDelete("cascade"),
+    check("brackets_number_range", sql`${table.number} between 1 and 3`),
+  ],
+);
+
+// Picks belong to a membership, so each group has its own brackets per user
 // and leaving a group drops that group's picks.
 export const picks = pgTable(
   "picks",
@@ -97,6 +132,8 @@ export const picks = pgTable(
         .notNull()
         .references(() => user.id, { onDelete: "cascade" }),
     groupId: uuid("group_id").notNull(),
+    // Which of the member's brackets in the group (1 to 3) this pick is in.
+    bracketNumber: integer("bracket_number").default(1).notNull(),
     gameId: uuid("game_id")
       .notNull()
       .references(() => games.id, { onDelete: "cascade" }),
@@ -105,7 +142,13 @@ export const picks = pgTable(
       .references(() => teams.id),
   },
   (table) => [
-    primaryKey({ columns: [table.userId, table.groupId, table.gameId] }),
+    // Column order matches how `drizzle-kit push` reads this key back, as for
+    // group_members above.
+    primaryKey({
+      name: "picks_user_id_group_id_bracket_number_game_id_pk",
+      columns: [table.userId, table.groupId, table.gameId, table.bracketNumber],
+    }),
+    check("picks_bracket_number_range", sql`${table.bracketNumber} between 1 and 3`),
     index("picks_game_id_idx").on(table.gameId),
     foreignKey({
       columns: [table.groupId, table.userId],

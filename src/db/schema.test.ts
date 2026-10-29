@@ -44,11 +44,16 @@ test("auth user IDs and references use text with cascading deletes", () => {
   }
 });
 
-test("picks are unique per user, group and game and deleted with their membership", () => {
+test("picks are unique per user, group, bracket and game and deleted with their membership", () => {
   const config = getTableConfig(schema.picks);
   assert.deepEqual(
     config.primaryKeys[0].columns.map((column) => column.name),
-    [schema.picks.userId.name, schema.picks.groupId.name, schema.picks.gameId.name],
+    [
+      schema.picks.userId.name,
+      schema.picks.groupId.name,
+      schema.picks.gameId.name,
+      schema.picks.bracketNumber.name,
+    ],
   );
   // Keys declared in the table callback hold their own column instances, so
   // compare by name.

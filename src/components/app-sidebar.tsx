@@ -1,10 +1,17 @@
 "use client";
 import { CopyPicksModal } from "@/components/copy-picks-modal";
 import { GroupPickerModal } from "@/components/group-picker-modal";
+import { NewBracketModal } from "@/components/new-bracket-modal";
 import { authClient } from "@/lib/auth-client";
-import { GroupSummary, PickSource, UserGroup } from "@/lib/types";
+import {
+  BracketSummary,
+  GroupSummary,
+  MAX_BRACKETS,
+  PickSource,
+  UserGroup,
+} from "@/lib/types";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 
 export const APP_NAME = "PickEm";
@@ -39,16 +46,26 @@ export const AppSidebar = ({
   groups,
   activeGroupId,
   joinableGroups,
+  brackets,
 }: {
   userName: string;
   isSuperAdmin: boolean;
   groups: UserGroup[];
   activeGroupId: string | null;
   joinableGroups: GroupSummary[];
+  // The user's brackets in the active group.
+  brackets: BracketSummary[];
 }) => {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Matches the bracket page: an unknown or missing ?b= shows bracket 1.
+  const activeBracketNumber =
+    brackets.find((bracket) => String(bracket.number) === searchParams.get("b"))
+      ?.number ?? 1;
+  const activeGroup = groups.find((group) => group.id === activeGroupId);
   const [open, setOpen] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [addingBracket, setAddingBracket] = useState(false);
   const [copyPrompt, setCopyPrompt] = useState<SwitchedToEmptyGroup | null>(
     null,
   );
@@ -82,17 +99,69 @@ export const AppSidebar = ({
         <nav className="flex flex-col gap-1 border-b border-white/15 px-3 py-4">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
             const active = isActivePath(pathname, href);
-            return (
+            const link = (
               <Link
                 key={href}
                 href={href}
                 onClick={() => setOpen(false)}
                 aria-current={active ? "page" : undefined}
-                className={`flex items-center gap-3 rounded px-3 py-2 text-sm font-semibold ${active ? "bg-ball-500/20 text-ball-300 shadow-[inset_3px_0_0_var(--color-ball-500)]" : "text-white/75 hover:bg-white/10 hover:text-white"}`}
+                className={`flex min-w-0 flex-1 items-center gap-3 rounded px-3 py-2 text-sm font-semibold ${active ? "bg-ball-500/20 text-ball-300 shadow-[inset_3px_0_0_var(--color-ball-500)]" : "text-white/75 hover:bg-white/10 hover:text-white"}`}
               >
                 <Icon />
                 {label}
               </Link>
+            );
+            if (href !== "/bracket" || !activeGroup) return link;
+            const full = brackets.length >= MAX_BRACKETS;
+            return (
+              <div key={href} className="flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-1">
+                  {link}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      setAddingBracket(true);
+                    }}
+                    disabled={full}
+                    aria-label="Add a bracket"
+                    title={
+                      full
+                        ? `You can fill out up to ${MAX_BRACKETS} brackets per group`
+                        : "Add a bracket"
+                    }
+                    className="shrink-0 rounded p-2 text-white/75 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                  >
+                    <PlusIcon />
+                  </button>
+                </div>
+                {brackets.length > 0 && (
+                  <ul className="flex flex-col gap-0.5 pl-8">
+                    {brackets.map((bracket) => {
+                      const current =
+                        active && bracket.number === activeBracketNumber;
+                      return (
+                        <li key={bracket.number}>
+                          <Link
+                            href={`/bracket?b=${bracket.number}`}
+                            onClick={() => setOpen(false)}
+                            aria-current={current ? "page" : undefined}
+                            className={`flex items-center gap-2 rounded px-3 py-1.5 text-sm ${current ? "bg-white/10 font-semibold text-white" : "text-white/60 hover:bg-white/10 hover:text-white"}`}
+                          >
+                            <span
+                              aria-hidden
+                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${current ? "bg-ball-500" : "bg-white/30"}`}
+                            />
+                            <span className="min-w-0 truncate">
+                              {bracket.name}
+                            </span>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
             );
           })}
         </nav>
@@ -124,6 +193,18 @@ export const AppSidebar = ({
           userGroups={groups}
           activeGroupId={activeGroupId}
           onClose={() => setJoining(false)}
+        />
+      )}
+      {addingBracket && activeGroup && (
+        <NewBracketModal
+          groupId={activeGroup.id}
+          groupName={activeGroup.name}
+          bracketNumber={
+            Array.from({ length: MAX_BRACKETS }, (_, i) => i + 1).find(
+              (number) => !brackets.some((bracket) => bracket.number === number),
+            ) ?? MAX_BRACKETS
+          }
+          onClose={() => setAddingBracket(false)}
         />
       )}
       {copyPrompt && (

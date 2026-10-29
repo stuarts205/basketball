@@ -60,8 +60,13 @@ export function bracketMatches(state: BracketState): Match[] {
   ];
 }
 
-// A user keeps a separate bracket in every group they belong to.
-export type PickOwner = { userId: string; groupId: string };
+// A user keeps up to three separate brackets in every group they belong to.
+// Without bracketNumber this is their first bracket.
+export type PickOwner = {
+  userId: string;
+  groupId: string;
+  bracketNumber?: number;
+};
 
 export async function loadBracketFromDatabase(
   owner?: PickOwner,
@@ -91,6 +96,7 @@ export async function loadBracketFromDatabase(
           and(
             eq(picks.userId, owner.userId),
             eq(picks.groupId, owner.groupId),
+            eq(picks.bracketNumber, owner.bracketNumber ?? 1),
             eq(games.year, latestYear.year),
           ),
         )

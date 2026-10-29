@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { games, picks, teams, user } from "@/db/schema";
 import { auth } from "@/lib/auth";
+import { hasBracket, parseBracketNumber } from "@/lib/brackets";
 import { UUID_PATTERN, findUserGroup } from "@/lib/groups";
 import { bracketMatches, loadBracketFromDatabase } from "@/lib/load-bracket";
 
@@ -10,16 +11,25 @@ const notAMember = {
   body: { error: "You are not a member of that group" },
 } as const;
 
+const noSuchBracket = {
+  status: 404,
+  body: { error: "You don't have that bracket in this group" },
+} as const;
+
 export async function DELETE(request: Request) {
   try {
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session)
       return Response.json({ error: "Sign in to reset picks" }, { status: 401 });
 
-    const groupId = new URL(request.url).searchParams.get("groupId") ?? "";
+    const params = new URL(request.url).searchParams;
+    const groupId = params.get("groupId") ?? "";
     if (!UUID_PATTERN.test(groupId))
       return Response.json({ error: "groupId is required" }, { status: 400 });
-    const owner = { userId: session.user.id, groupId };
+    const bracketNumber = parseBracketNumber(params.get("bracket"));
+    if (!bracketNumber)
+      return Response.json({ error: "Invalid bracket" }, { status: 400 });
+    const owner = { userId: session.user.id, groupId, bracketNumber };
 
     const result = await db.transaction(async (tx) => {
       await tx
@@ -28,6 +38,8 @@ export async function DELETE(request: Request) {
         .where(eq(user.id, session.user.id))
         .for("update");
       if (!(await findUserGroup(session.user.id, groupId, tx))) return notAMember;
+      if (!(await hasBracket(session.user.id, groupId, bracketNumber, tx)))
+        return noSuchBracket;
       const bracket = await loadBracketFromDatabase(owner, tx);
       const tournamentGames = await tx
         .select({ id: games.id })
@@ -39,6 +51,7 @@ export async function DELETE(request: Request) {
           and(
             eq(picks.userId, session.user.id),
             eq(picks.groupId, groupId),
+            eq(picks.bracketNumber, bracketNumber),
             inArray(picks.gameId, tournamentGames.map((game) => game.id)),
           ),
         );
@@ -80,7 +93,12 @@ export async function PUT(request: Request) {
       );
     }
     const { groupId, gameId, teamName } = body;
-    const owner = { userId: session.user.id, groupId };
+    const bracketNumber = parseBracketNumber(
+      "bracket" in body ? body.bracket : undefined,
+    );
+    if (!bracketNumber)
+      return Response.json({ error: "Invalid bracket" }, { status: 400 });
+    const owner = { userId: session.user.id, groupId, bracketNumber };
 
     const result = await db.transaction(async (tx) => {
       // Serialize edits for this user without locking other users' brackets.
@@ -90,6 +108,8 @@ export async function PUT(request: Request) {
         .where(eq(user.id, session.user.id))
         .for("update");
       if (!(await findUserGroup(session.user.id, groupId, tx))) return notAMember;
+      if (!(await hasBracket(session.user.id, groupId, bracketNumber, tx)))
+        return noSuchBracket;
       const bracket = await loadBracketFromDatabase(owner, tx);
       const match = bracketMatches(bracket.state).find(
         (entry) => entry.id === gameId,
@@ -126,11 +146,17 @@ export async function PUT(request: Request) {
         .values({
           userId: session.user.id,
           groupId,
+          bracketNumber,
           gameId: game.id,
           winnerTeamId: team.id,
         })
         .onConflictDoUpdate({
-          target: [picks.userId, picks.groupId, picks.gameId],
+          target: [
+            picks.userId,
+            picks.groupId,
+            picks.bracketNumber,
+            picks.gameId,
+          ],
           set: { winnerTeamId: team.id },
         });
 
@@ -154,6 +180,7 @@ export async function PUT(request: Request) {
           and(
             eq(picks.userId, session.user.id),
             eq(picks.groupId, groupId),
+            eq(picks.bracketNumber, bracketNumber),
             eq(games.year, bracket.year),
           ),
         );
@@ -167,6 +194,7 @@ export async function PUT(request: Request) {
             and(
               eq(picks.userId, session.user.id),
               eq(picks.groupId, groupId),
+              eq(picks.bracketNumber, bracketNumber),
               inArray(picks.gameId, invalidIds),
             ),
           );

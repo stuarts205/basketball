@@ -100,9 +100,9 @@ export async function findUserGroup(
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-// Starts the user's bracket in a group as a copy of their bracket in another
-// group. Only the user's own picks are read, and those exist only for groups
-// they still belong to, so a foreign or stale source copies nothing.
+// Starts the user's first bracket in a group as a copy of their first bracket
+// in another group. Only the user's own picks are read, and those exist only
+// for groups they still belong to, so a foreign or stale source copies nothing.
 async function copyPicks(
   tx: Transaction,
   userId: string,
@@ -112,7 +112,13 @@ async function copyPicks(
   const rows = await tx
     .select({ gameId: picks.gameId, winnerTeamId: picks.winnerTeamId })
     .from(picks)
-    .where(and(eq(picks.userId, userId), eq(picks.groupId, fromGroupId)));
+    .where(
+      and(
+        eq(picks.userId, userId),
+        eq(picks.groupId, fromGroupId),
+        eq(picks.bracketNumber, 1),
+      ),
+    );
   if (!rows.length) return;
   await tx
     .insert(picks)
@@ -209,7 +215,8 @@ export async function joinGroup(
   });
 }
 
-// Counts the user's picks in each group for the current tournament.
+// Counts the user's picks in their first bracket in each group for the
+// current tournament.
 async function pickCountsByGroup(
   userId: string,
   database: Pick<typeof db, "select">,
@@ -221,6 +228,7 @@ async function pickCountsByGroup(
     .where(
       and(
         eq(picks.userId, userId),
+        eq(picks.bracketNumber, 1),
         eq(games.year, sql`(select max(${games.year}) from ${games})`),
       ),
     )
@@ -245,6 +253,7 @@ export async function listBracketChoices(
       .where(
         and(
           eq(picks.userId, userId),
+          eq(picks.bracketNumber, 1),
           eq(games.round, "Championship"),
           eq(games.year, sql`(select max(${games.year}) from ${games})`),
         ),
