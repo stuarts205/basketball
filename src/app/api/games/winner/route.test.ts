@@ -61,7 +61,7 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           return {
             user: {
               id, name: id, email: `${id}@example.test`, emailVerified: false,
-              createdAt: now, updatedAt: now, image: null,
+              createdAt: now, updatedAt: now, image: null, isSuperAdmin: false,
             },
             session: {
               id: `session-${id}`, userId: id, token: `token-${id}`,

@@ -33,6 +33,7 @@ export default async function HomeLayout({
     <div className="flex min-h-screen bg-court">
       <AppSidebar
         userName={session.user.name || session.user.email}
+        isSuperAdmin={session.user.isSuperAdmin}
         groups={userGroups}
         activeGroupId={activeGroup?.id ?? null}
         joinableGroups={joinableGroups}

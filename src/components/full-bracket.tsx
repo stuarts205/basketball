@@ -18,14 +18,11 @@ export const FullBracket = ({
   initialState,
   groupId,
   groupName,
-  espnResults,
 }: {
   initialState: BracketState;
   // The group whose bracket is shown; picks are saved only with one.
   groupId: string | null;
   groupName: string | null;
-  // Real results from the saved ESPN bracket, if there is one.
-  espnResults: SimResults | null;
 }) => {
   const canEdit = groupId !== null;
   const [state, setState] = useState(initialState);
@@ -37,10 +34,9 @@ export const FullBracket = ({
   }
   // Results shown over the picks; they live only in the browser, nothing is saved.
   const [results, setResults] = useState<{
-    source: "espn" | "sim";
     winners: SimResults;
     scores?: SimScores;
-  } | null>(espnResults ? { source: "espn", winners: espnResults } : null);
+  } | null>(null);
   const shown = useMemo(
     () =>
       results ? applyResults(state, results.winners, results.scores) : state,
@@ -151,27 +147,13 @@ export const FullBracket = ({
   return (
     <div className="w-full">
       <div className="mb-4 flex flex-wrap justify-end gap-2">
-        {espnResults && (
-          <button
-            type="button"
-            aria-pressed={results?.source === "espn"}
-            onClick={() =>
-              setResults({ source: "espn", winners: espnResults })
-            }
-            className="rounded-full border-2 border-gray-300 bg-white px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-gray-700 shadow-sm transition-colors hover:bg-gray-100 aria-pressed:border-gray-800 aria-pressed:bg-gray-800 aria-pressed:text-white"
-          >
-            ESPN Results
-          </button>
-        )}
         <button
           type="button"
-          aria-pressed={results?.source === "sim"}
-          onClick={() =>
-            setResults({ source: "sim", ...simulateResults(state) })
-          }
+          aria-pressed={results !== null}
+          onClick={() => setResults(simulateResults(state))}
           className="rounded-full border-2 border-gray-300 bg-white px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-gray-700 shadow-sm transition-colors hover:bg-gray-100 aria-pressed:border-gray-800 aria-pressed:bg-gray-800 aria-pressed:text-white"
         >
-          {results?.source === "sim" ? "Re-simulate" : "Simulate Results"}
+          {results ? "Re-simulate" : "Simulate Results"}
         </button>
         {results && (
           <button
@@ -229,7 +211,7 @@ export const FullBracket = ({
       {score && (
         <ScoreSummary
           score={score}
-          label={results?.source === "espn" ? "ESPN score" : "Simulated score"}
+          label="Simulated score"
         />
       )}
       {(resetError || saveError) && (

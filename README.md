@@ -2,7 +2,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Tournament Data
 
-The database importer uses ESPN's 2025-26 men's NCAA tournament bracket, including
+The database importer uses the 2025-26 men's NCAA tournament bracket, including
 all 68 teams and 67 games. Only First Four and First Round participants are imported;
 later rounds start empty. First Round slots fed by the First Four are left empty.
 Set `DATABASE_URL` in `.env` first.

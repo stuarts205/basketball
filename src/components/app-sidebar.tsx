@@ -26,11 +26,13 @@ function groupLabel(group: UserGroup | undefined) {
 
 export const AppSidebar = ({
   userName,
+  isSuperAdmin,
   groups,
   activeGroupId,
   joinableGroups,
 }: {
   userName: string;
+  isSuperAdmin: boolean;
   groups: UserGroup[];
   activeGroupId: string | null;
   joinableGroups: GroupSummary[];
@@ -89,6 +91,8 @@ export const AppSidebar = ({
         <div className="mt-auto p-2">
           <UserMenu
             userName={userName}
+            isSuperAdmin={isSuperAdmin}
+            onNavigate={() => setOpen(false)}
             groups={groups}
             activeGroupId={activeGroupId}
             onJoinGroup={() => {
@@ -134,12 +138,17 @@ type SwitchedToEmptyGroup = {
 
 const UserMenu = ({
   userName,
+  isSuperAdmin,
+  onNavigate,
   groups,
   activeGroupId,
   onJoinGroup,
   onSwitchedToEmptyGroup,
 }: {
   userName: string;
+  isSuperAdmin: boolean;
+  // Closes the mobile sidebar after following a link.
+  onNavigate: () => void;
   groups: UserGroup[];
   activeGroupId: string | null;
   onJoinGroup: () => void;
@@ -269,6 +278,20 @@ const UserMenu = ({
             </p>
           )}
           <div className="my-1 border-t border-white/15" />
+          {isSuperAdmin && (
+            <Link
+              href="/settings"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onNavigate();
+              }}
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm font-semibold text-white/90 hover:bg-white/10"
+            >
+              <SettingsIcon />
+              Settings
+            </Link>
+          )}
           <button
             type="button"
             role="menuitem"
@@ -333,6 +356,15 @@ function CheckIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
       <path d="m5 12 5 5 9-10" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
     </svg>
   );
 }

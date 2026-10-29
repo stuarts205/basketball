@@ -13,13 +13,37 @@ import {
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { loadEspnResults } from "@/lib/espn-bracket";
+import { db } from "@/db";
+import { games } from "@/db/schema";
+import { LoadBracketButton } from "@/components/load-bracket-button";
+import { EmptyBracket } from "@/components/empty-bracket";
 
 export const dynamic = "force-dynamic";
 
 export default async function BracketPage() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/");
+
+  const [anyGame] = await db.select({ id: games.id }).from(games).limit(1);
+  if (!anyGame) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-court p-6">
+        {session.user.isSuperAdmin ? (
+          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-6 text-center shadow-sm">
+            <h1 className="mb-1 text-2xl font-bold text-gray-800">
+              No bracket yet
+            </h1>
+            <p className="mb-6 text-sm text-gray-400">
+              Load the teams and games to set up the tournament.
+            </p>
+            <LoadBracketButton />
+          </div>
+        ) : (
+          <EmptyBracket />
+        )}
+      </div>
+    );
+  }
 
   const [userGroups, cookieStore] = await Promise.all([
     listUserGroups(session.user.id),
@@ -43,7 +67,6 @@ export default async function BracketPage() {
     activeGroup ? [] : listGroups(),
     mustChooseGroup ? listBracketChoices(session.user.id) : [],
   ]);
-  const espnResults = await loadEspnResults(year);
 
   return (
     <div className="min-h-screen bg-court p-6 pt-16 lg:px-3 lg:pt-6">
@@ -63,7 +86,6 @@ export default async function BracketPage() {
           initialState={state}
           groupId={activeGroup?.id ?? null}
           groupName={activeGroup?.name ?? null}
-          espnResults={espnResults}
         />
       </div>
       {!activeGroup && <GroupPickerModal groups={availableGroups} />}
