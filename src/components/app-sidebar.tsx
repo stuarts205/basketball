@@ -9,7 +9,16 @@ import React, { useEffect, useRef, useState } from "react";
 
 export const APP_NAME = "PickEm";
 
-const NAV_ITEMS = [{ href: "/bracket", label: "Bracket", icon: BracketIcon }];
+const NAV_ITEMS = [
+  { href: "/bracket", label: "My Bracket", icon: BracketIcon },
+  { href: "/live-bracket", label: " Live Bracket", icon: BracketIcon }
+];
+
+// Matches the page itself and pages nested under it, so "/bracket" isn't
+// active on "/bracket-results".
+function isActivePath(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -72,7 +81,7 @@ export const AppSidebar = ({
 
         <nav className="flex flex-col gap-1 border-b border-white/15 px-3 py-4">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            const active = pathname.startsWith(href);
+            const active = isActivePath(pathname, href);
             return (
               <Link
                 key={href}
@@ -157,6 +166,7 @@ const UserMenu = ({
   onSwitchedToEmptyGroup: (prompt: SwitchedToEmptyGroup) => void;
 }) => {
   const router = useRouter();
+  const settingsActive = isActivePath(usePathname(), "/settings");
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
@@ -282,14 +292,16 @@ const UserMenu = ({
             <Link
               href="/settings"
               role="menuitem"
+              aria-current={settingsActive ? "page" : undefined}
               onClick={() => {
                 setOpen(false);
                 onNavigate();
               }}
-              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm font-semibold text-white/90 hover:bg-white/10"
+              className={`flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm font-semibold ${settingsActive ? "bg-ball-500/20 text-ball-300 shadow-[inset_3px_0_0_var(--color-ball-500)]" : "text-white/90 hover:bg-white/10"}`}
             >
               <SettingsIcon />
               Settings
+              {settingsActive && <CheckIcon />}
             </Link>
           )}
           <button
