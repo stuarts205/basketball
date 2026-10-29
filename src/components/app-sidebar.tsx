@@ -8,6 +8,7 @@ import {
   GroupSummary,
   MAX_BRACKETS,
   PickSource,
+  SIDEBAR_COOKIE,
   UserGroup,
 } from "@/lib/types";
 import Link from "next/link";
@@ -47,6 +48,7 @@ export const AppSidebar = ({
   activeGroupId,
   joinableGroups,
   brackets,
+  initialCollapsed,
 }: {
   userName: string;
   isSuperAdmin: boolean;
@@ -55,6 +57,8 @@ export const AppSidebar = ({
   joinableGroups: GroupSummary[];
   // The user's brackets in the active group.
   brackets: BracketSummary[];
+  // Whether the desktop sidebar starts collapsed, from SIDEBAR_COOKIE.
+  initialCollapsed: boolean;
 }) => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -64,11 +68,21 @@ export const AppSidebar = ({
       ?.number ?? 1;
   const activeGroup = groups.find((group) => group.id === activeGroupId);
   const [open, setOpen] = useState(false);
+  // On desktop the sidebar can shrink to a strip holding only its toggle.
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [joining, setJoining] = useState(false);
   const [addingBracket, setAddingBracket] = useState(false);
   const [copyPrompt, setCopyPrompt] = useState<SwitchedToEmptyGroup | null>(
     null,
   );
+  const hiddenWhenCollapsed = collapsed ? "lg:hidden" : "";
+
+  function toggleCollapsed() {
+    const next = !collapsed;
+    setCollapsed(next);
+    // Remembered so the next page load renders the same way on the server.
+    document.cookie = `${SIDEBAR_COOKIE}=${next ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
+  }
 
   return (
     <>
@@ -89,14 +103,41 @@ export const AppSidebar = ({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col bg-sideline-900 text-white transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col bg-sideline-900 text-white transition-[transform,width] lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"} ${collapsed ? "lg:w-14" : ""}`}
       >
-        <div className="flex items-center gap-3 border-b border-white/15 px-5 py-5">
+        {collapsed && (
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label="Show sidebar"
+            aria-expanded={false}
+            title="Show sidebar"
+            className="mx-auto mt-4 hidden rounded p-2 text-white/75 hover:bg-white/10 hover:text-white lg:block"
+          >
+            <SidebarIcon />
+          </button>
+        )}
+
+        <div
+          className={`flex items-center gap-3 border-b border-white/15 py-5 pl-5 pr-3 ${hiddenWhenCollapsed}`}
+        >
           <BasketballIcon />
-          <span className="text-2xl font-bold">{APP_NAME}</span>
+          <span className="flex-1 text-2xl font-bold">{APP_NAME}</span>
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label="Hide sidebar"
+            aria-expanded={true}
+            title="Hide sidebar"
+            className="hidden shrink-0 rounded p-2 text-white/60 hover:bg-white/10 hover:text-white lg:block"
+          >
+            <SidebarIcon />
+          </button>
         </div>
 
-        <nav className="flex flex-col gap-1 border-b border-white/15 px-3 py-4">
+        <nav
+          className={`flex flex-col gap-1 border-b border-white/15 px-3 py-4 ${hiddenWhenCollapsed}`}
+        >
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
             const active = isActivePath(pathname, href);
             const link = (
@@ -166,8 +207,48 @@ export const AppSidebar = ({
           })}
         </nav>
 
-        <div className="mt-auto p-2">
+        {/* Collapsed on desktop: just the icons, with names on hover. */}
+        {collapsed && (
+          <nav className="mt-3 hidden flex-col items-center gap-1 border-t border-white/15 pt-3 lg:flex">
+            {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+              const active = isActivePath(pathname, href);
+              return (
+                <div key={href} className="flex flex-col items-center gap-1">
+                  <Link
+                    href={href}
+                    aria-label={label.trim()}
+                    title={label.trim()}
+                    aria-current={active ? "page" : undefined}
+                    className={`rounded p-2 ${active ? "bg-ball-500/20 text-ball-300 shadow-[inset_3px_0_0_var(--color-ball-500)]" : "text-white/75 hover:bg-white/10 hover:text-white"}`}
+                  >
+                    <Icon />
+                  </Link>
+                  {href === "/bracket" &&
+                    brackets.map((bracket) => {
+                      const current =
+                        active && bracket.number === activeBracketNumber;
+                      return (
+                        <Link
+                          key={bracket.number}
+                          href={`/bracket?b=${bracket.number}`}
+                          aria-label={bracket.name}
+                          title={bracket.name}
+                          aria-current={current ? "page" : undefined}
+                          className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold ${current ? "bg-ball-500 text-white" : "bg-white/10 text-white/60 hover:bg-white/20 hover:text-white"}`}
+                        >
+                          {bracket.number}
+                        </Link>
+                      );
+                    })}
+                </div>
+              );
+            })}
+          </nav>
+        )}
+
+        <div className={`mt-auto p-2 ${collapsed ? "lg:px-1" : ""}`}>
           <UserMenu
+            compact={collapsed}
             userName={userName}
             isSuperAdmin={isSuperAdmin}
             onNavigate={() => setOpen(false)}
@@ -227,6 +308,7 @@ type SwitchedToEmptyGroup = {
 };
 
 const UserMenu = ({
+  compact,
   userName,
   isSuperAdmin,
   onNavigate,
@@ -235,6 +317,9 @@ const UserMenu = ({
   onJoinGroup,
   onSwitchedToEmptyGroup,
 }: {
+  // In the collapsed desktop sidebar: only the avatar shows, and the menu
+  // opens to its right.
+  compact: boolean;
   userName: string;
   isSuperAdmin: boolean;
   // Closes the mobile sidebar after following a link.
@@ -311,7 +396,7 @@ const UserMenu = ({
       {open && (
         <div
           role="menu"
-          className="absolute inset-x-0 bottom-full mb-2 rounded-lg border border-white/15 bg-sideline-800 p-1 shadow-lg"
+          className={`absolute inset-x-0 bottom-full z-50 mb-2 rounded-lg border border-white/15 bg-sideline-800 p-1 shadow-lg ${compact ? "lg:inset-x-auto lg:bottom-0 lg:left-full lg:mb-0 lg:ml-3 lg:w-60" : ""}`}
         >
           <div className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-white/50">
             Your groups
@@ -401,12 +486,14 @@ const UserMenu = ({
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex w-full items-center gap-3 rounded-lg border border-white/15 bg-white/10 px-3 py-3 text-left hover:bg-white/15"
+        aria-label={compact ? `${userName}, ${label}` : undefined}
+        title={compact ? `${userName} · ${label}` : undefined}
+        className={`flex w-full items-center gap-3 rounded-lg border border-white/15 bg-white/10 px-3 py-3 text-left hover:bg-white/15 ${compact ? "lg:justify-center lg:border-0 lg:bg-transparent lg:p-1 lg:hover:bg-white/10" : ""}`}
       >
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ball-500 text-sm font-semibold">
           {initials(userName)}
         </span>
-        <span className="min-w-0 flex-1">
+        <span className={`min-w-0 flex-1 ${compact ? "lg:hidden" : ""}`}>
           <span className="block truncate text-sm font-semibold">
             {userName}
           </span>
@@ -414,7 +501,9 @@ const UserMenu = ({
             {label}
           </span>
         </span>
-        <ChevronIcon open={open} />
+        <span className={compact ? "lg:hidden" : ""}>
+          <ChevronIcon open={open} />
+        </span>
       </button>
     </div>
   );
@@ -433,6 +522,16 @@ function BracketIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
       <path d="M3 5h5v6H3M3 13h5v6H3M8 8h4v8H8M12 12h5M21 9v6h-4V9z" />
+    </svg>
+  );
+}
+
+// A panel with its left column marked, for showing and hiding the sidebar.
+function SidebarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16" />
     </svg>
   );
 }

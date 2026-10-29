@@ -9,6 +9,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { hasNamedBracket, listBrackets } from "@/lib/brackets";
+import { SIDEBAR_COOKIE } from "@/lib/types";
 
 export default async function HomeLayout({
   children,
@@ -44,6 +45,7 @@ export default async function HomeLayout({
         activeGroupId={activeGroup?.id ?? null}
         joinableGroups={joinableGroups}
         brackets={userBrackets}
+        initialCollapsed={cookieStore.get(SIDEBAR_COOKIE)?.value === "1"}
       />
       <main className="min-w-0 flex-1">{children}</main>
     </div>

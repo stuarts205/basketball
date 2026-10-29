@@ -37,8 +37,15 @@ export const BracketView = ({
     };
 
     updateScale();
+    // The viewport also changes width when the sidebar opens or closes.
+    const observer = new ResizeObserver(updateScale);
+    if (desktopViewportRef.current)
+      observer.observe(desktopViewportRef.current);
     window.addEventListener("resize", updateScale);
-    return () => window.removeEventListener("resize", updateScale);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateScale);
+    };
   }, []);
 
   return (
@@ -93,8 +100,10 @@ export const BracketView = ({
         {/* Final Four — simplified stacked layout at bottom on mobile */}
         <div className="mx-auto flex w-full max-w-lg flex-col gap-3">
           <div className="mb-1">
-            <div className="text-xs font-black uppercase tracking-widest text-gray-500">
-              Final Four
+            <div className="text-[11px] font-extrabold uppercase tracking-widest">
+              <span className="inline-block rounded-full bg-sideline-900/85 px-3 py-0.5 text-white shadow-sm">
+                Final Four
+              </span>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

@@ -40,6 +40,9 @@ export const DESKTOP_REGION_GAP = 240;
 
 export const GROUP_NAME_MAX_LENGTH = 50;
 
+// "1" when the user has collapsed the desktop sidebar.
+export const SIDEBAR_COOKIE = "sidebar_collapsed";
+
 // Each member can fill out up to this many brackets in a group.
 export const MAX_BRACKETS = 3;
 export const BRACKET_NAME_MAX_LENGTH = 50;

@@ -33,7 +33,7 @@ export const RegionBracket = ({
             {ri > 0 && <ConnectorLines roundIndex={ri} />}
             <div className="pointer-events-none relative z-10 flex flex-col shrink-0">
               <div
-                className="text-[9px] font-bold text-gray-300 uppercase tracking-widest text-center"
+                className="text-[10px] font-extrabold uppercase tracking-widest text-center"
                 style={{
                   width: CARD_W,
                   height: COL_LABEL_H,
@@ -47,7 +47,9 @@ export const RegionBracket = ({
                     : {}),
                 }}
               >
-                {round.name}
+                <span className="inline-block rounded-full bg-sideline-900/85 px-2.5 align-middle leading-[18px] text-white shadow-sm">
+                  {round.name}
+                </span>
               </div>
               <div
                 className="flex flex-col shrink-0"

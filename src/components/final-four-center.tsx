@@ -72,8 +72,10 @@ export const FinalFourCenter = ({
         className="absolute"
         style={{ left: leftSemifinal, top: champY, width: FF_W }}
       >
-        <div className="absolute bottom-full mb-3 w-full text-center text-xs font-bold text-gray-500">
-          Final Four
+        <div className="absolute bottom-full mb-3 w-full text-center text-[11px] font-extrabold uppercase tracking-widest">
+          <span className="inline-block rounded-full bg-sideline-900/85 px-3 py-0.5 text-white shadow-sm">
+            Final Four
+          </span>
         </div>
         <MatchCard match={ff[0]} onSelectTeam={onSelectTeam} width={FF_W} />
       </div>
@@ -82,8 +84,10 @@ export const FinalFourCenter = ({
         className="absolute"
         style={{ left: rightSemifinal, top: champY, width: FF_W }}
       >
-        <div className="absolute bottom-full mb-3 w-full text-center text-xs font-bold text-gray-500">
-          Final Four
+        <div className="absolute bottom-full mb-3 w-full text-center text-[11px] font-extrabold uppercase tracking-widest">
+          <span className="inline-block rounded-full bg-sideline-900/85 px-3 py-0.5 text-white shadow-sm">
+            Final Four
+          </span>
         </div>
         <MatchCard match={ff[1]} onSelectTeam={onSelectTeam} width={FF_W} />
       </div>
@@ -96,8 +100,10 @@ export const FinalFourCenter = ({
           width: championshipWidth,
         }}
       >
-        <div className="absolute bottom-full mb-3 w-full text-center text-xs font-bold text-gray-700">
-          Championship
+        <div className="absolute bottom-full mb-3 w-full text-center text-[11px] font-extrabold uppercase tracking-widest">
+          <span className="inline-block rounded-full bg-sideline-900/85 px-3 py-0.5 text-white shadow-sm">
+            Championship
+          </span>
         </div>
         <MatchCard
           match={championship}
