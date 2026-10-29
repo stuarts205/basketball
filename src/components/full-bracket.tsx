@@ -2,8 +2,10 @@
 import { BracketState, DESKTOP_REGION_GAP, Match, Team } from "@/lib/types";
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
+  ActualResults,
   SimResults,
   SimScores,
+  actualScores,
   applyResults,
   simulateResults,
 } from "@/lib/simulate";
@@ -36,7 +38,10 @@ export const FullBracket = ({
   const [results, setResults] = useState<{
     winners: SimResults;
     scores?: SimScores;
+    actual?: boolean;
   } | null>(null);
+  const [loadingActual, setLoadingActual] = useState(false);
+  const [actualError, setActualError] = useState<string | null>(null);
   const shown = useMemo(
     () =>
       results ? applyResults(state, results.winners, results.scores) : state,
@@ -105,6 +110,29 @@ export const FullBracket = ({
     }
   }
 
+  async function handleShowActual() {
+    if (loadingActual) return;
+    setLoadingActual(true);
+    setActualError(null);
+    try {
+      const response = await fetch("/api/results");
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Could not load results");
+      const actual: ActualResults = body;
+      setResults({
+        winners: actual.winners,
+        scores: actualScores(state, actual),
+        actual: true,
+      });
+    } catch (error) {
+      setActualError(
+        error instanceof Error ? error.message : "Could not load results",
+      );
+    } finally {
+      setLoadingActual(false);
+    }
+  }
+
   async function handleSelectTeam(match: Match, team: Team) {
     if (!groupId) {
       setSaveError("Join a group to save your picks.");
@@ -149,21 +177,32 @@ export const FullBracket = ({
       <div className="mb-4 flex flex-wrap justify-end gap-2">
         <button
           type="button"
-          aria-pressed={results !== null}
+          aria-pressed={results !== null && !results.actual}
           onClick={() => setResults(simulateResults(state))}
           className="rounded-full border-2 border-gray-300 bg-white px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-gray-700 shadow-sm transition-colors hover:bg-gray-100 aria-pressed:border-gray-800 aria-pressed:bg-gray-800 aria-pressed:text-white"
         >
-          {results ? "Re-simulate" : "Simulate Results"}
+          {results && !results.actual ? "Re-simulate" : "Simulate Results"}
         </button>
-        {results && (
-          <button
-            type="button"
-            onClick={() => setResults(null)}
-            className="rounded-full px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-gray-500 hover:bg-gray-100"
-          >
-            Hide Results
-          </button>
-        )}
+        <button
+          type="button"
+          aria-pressed={results?.actual === true}
+          onClick={handleShowActual}
+          disabled={loadingActual}
+          className="rounded-full border-2 border-gray-300 bg-white px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-gray-700 shadow-sm transition-colors hover:bg-gray-100 disabled:cursor-wait disabled:opacity-60 aria-pressed:border-gray-800 aria-pressed:bg-gray-800 aria-pressed:text-white"
+        >
+          {loadingActual ? "Loading..." : "ESPN Results"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setResults(null);
+            setActualError(null);
+          }}
+          disabled={results === null}
+          className="rounded-full border-2 border-gray-300 bg-white px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-gray-700 shadow-sm transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
+        >
+          Reset Simulation
+        </button>
         {/* Reset wipes the whole bracket, so it takes a second click to confirm. */}
         {confirmingReset ? (
           <div
@@ -211,12 +250,12 @@ export const FullBracket = ({
       {score && (
         <ScoreSummary
           score={score}
-          label="Simulated score"
+          label={results?.actual ? "Actual score" : "Simulated score"}
         />
       )}
-      {(resetError || saveError) && (
+      {(resetError || saveError || actualError) && (
         <p role="alert" className="mb-4 text-sm text-red-700">
-          {resetError ?? saveError}
+          {resetError ?? saveError ?? actualError}
         </p>
       )}
       {!!shown.firstFour?.length && (

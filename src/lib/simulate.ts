@@ -93,17 +93,11 @@ function simulateScore(winner: Team, loser: Team): [number, number] {
   return [winnerPoints, Math.max(40, winnerPoints - margin)];
 }
 
-// Plays every game in the tournament, weighted by seed. Only first-round
-// games get scores.
+// Plays every game in the tournament, weighted by seed, with a final score.
 export function simulateResults(state: BracketState): {
   winners: SimResults;
   scores: SimScores;
 } {
-  const firstRound = new Set(
-    state.regions.flatMap((region) =>
-      (region.rounds[0]?.matches ?? []).map((match) => match.id),
-    ),
-  );
   const winners: SimResults = {};
   const scores: SimScores = {};
   walkActual(state, (match, [top, bottom]) => {
@@ -111,18 +105,59 @@ export function simulateResults(state: BracketState): {
     const topWins = Math.random() < topWinChance(top, bottom);
     const winner = topWins ? top : bottom;
     winners[match.id] = winner.name;
-    if (firstRound.has(match.id)) {
-      const [winnerPoints, loserPoints] = simulateScore(
-        winner,
-        topWins ? bottom : top,
-      );
-      scores[match.id] = topWins
-        ? [winnerPoints, loserPoints]
-        : [loserPoints, winnerPoints];
-    }
+    const [winnerPoints, loserPoints] = simulateScore(
+      winner,
+      topWins ? bottom : top,
+    );
+    scores[match.id] = topWins
+      ? [winnerPoints, loserPoints]
+      : [loserPoints, winnerPoints];
     return winner;
   });
   return { winners, scores };
+}
+
+// Applies `update` to every game in the bracket.
+function mapMatches(
+  state: BracketState,
+  update: <M extends Match>(match: M) => M,
+): BracketState {
+  return {
+    ...state,
+    firstFour: state.firstFour?.map(update),
+    regions: state.regions.map((region) => ({
+      ...region,
+      rounds: region.rounds.map((round) => ({
+        ...round,
+        matches: round.matches.map(update),
+      })),
+    })),
+    ff: state.ff.map(update),
+    championship: update(state.championship),
+  };
+}
+
+// Real results: winners by game id, and each team's points by game id and name.
+export type ActualResults = {
+  winners: SimResults;
+  points: Record<string, Record<string, number>>;
+};
+
+// Puts real scores in the order of each game's actual teams.
+export function actualScores(
+  state: BracketState,
+  results: ActualResults,
+): SimScores {
+  const scores: SimScores = {};
+  mapMatches(applyResults(state, results.winners), (match) => {
+    const points = results.points[match.id];
+    const [top, bottom] = match.actualTeams ?? [];
+    if (points && top && bottom && top.name in points && bottom.name in points) {
+      scores[match.id] = [points[top.name], points[bottom.name]];
+    }
+    return match;
+  });
+  return scores;
 }
 
 export function applyResults(
@@ -136,28 +171,16 @@ export function applyResults(
       actualTeams.find((team) => team?.name === results[match.id]) ?? null,
   );
   if (!scores) return applied;
-  // A score shows only beside the team that actually played in that slot.
-  const regions = applied.regions.map((region) => ({
-    ...region,
-    rounds: region.rounds.map((round, roundIndex) =>
-      roundIndex !== 0
-        ? round
-        : {
-            ...round,
-            matches: round.matches.map((match) => {
-              const score = scores[match.id];
-              if (!score) return match;
-              return {
-                ...match,
-                score: match.teams.map((team, i) =>
-                  team && team.name === match.actualTeams?.[i]?.name
-                    ? score[i]
-                    : null,
-                ) as [number | null, number | null],
-              };
-            }),
-          },
-    ),
-  }));
-  return { ...applied, regions };
+  // Scores belong to the teams that actually played; the card shows them in
+  // place of a knocked-out pick.
+  return mapMatches(applied, (match) => {
+    const score = scores[match.id];
+    if (!score) return match;
+    return {
+      ...match,
+      score: match.teams.map((team, i) =>
+        team && match.actualTeams?.[i] ? score[i] : null,
+      ) as [number | null, number | null],
+    };
+  });
 }

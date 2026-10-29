@@ -35,6 +35,20 @@ export async function loadTournament(refresh = false): Promise<Tournament> {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
+  const bracket = await fetchTournament();
+  await writeFile(
+    snapshot,
+    JSON.stringify(
+      { sourceUrl, retrievedAt: new Date().toISOString(), bracket },
+      null,
+      2,
+    ) + "\n",
+  );
+  return bracket;
+}
+
+// Downloads the current bracket from ESPN without saving it anywhere.
+export async function fetchTournament(): Promise<Tournament> {
   const response = await fetch(sourceUrl, {
     signal: AbortSignal.timeout(30000),
   });
@@ -55,14 +69,6 @@ export async function loadTournament(refresh = false): Promise<Tournament> {
   if (!bracket?.matchups?.length || bracket.season !== season) {
     throw new Error("ESPN did not return the 2025-26 tournament");
   }
-  await writeFile(
-    snapshot,
-    JSON.stringify(
-      { sourceUrl, retrievedAt: new Date().toISOString(), bracket },
-      null,
-      2,
-    ) + "\n",
-  );
   return bracket;
 }
 

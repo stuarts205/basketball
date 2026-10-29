@@ -8,6 +8,7 @@ export type Competitor = {
   alternateColor: string;
   logo: string;
   seed: string;
+  score?: string;
   winner: boolean;
 };
 export type Matchup = {
