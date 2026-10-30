@@ -114,18 +114,16 @@ function TeamPanel({
         ) : (
           <span
             aria-hidden
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-lg font-bold text-gray-300"
-          >
-            ?
-          </span>
+            className="h-12 w-12 rounded-full bg-gray-100"
+          />
         )}
         <span
-          className={`flex max-w-full items-baseline gap-1 text-sm ${isCorrectPick ? "font-bold text-green-700" : isLeading ? "font-bold text-gray-900" : "font-semibold text-gray-500"}`}
+          className={`flex min-h-5 max-w-full items-baseline gap-1 text-sm ${isCorrectPick ? "font-bold text-green-700" : isLeading ? "font-bold text-gray-900" : "font-semibold text-gray-500"}`}
         >
           <span className="text-[11px] font-normal text-gray-400">
             {shownTeam?.seed ?? pendingTeams?.[0]?.seed ?? ""}
           </span>
-          <span className="min-w-0 truncate">{shownName || "TBD"}</span>
+          <span className="min-w-0 truncate">{shownName}</span>
           {isStruck ? (
             <span aria-label="Pick missed" className="font-bold text-red-600">
               ✕

@@ -45,7 +45,9 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
         }
         await tx.insert(teams).values(teamRows);
         // Start from a tournament with no results, whatever the real one has.
-        const unplayed = before.map((game) => ({ ...game, actualWinnerTeamId: null }));
+        const unplayed = before.map((game) => ({
+          ...game, actualWinnerTeamId: null, actualScore1: null, actualScore2: null,
+        }));
         await tx.insert(games).values(unplayed);
         await tx.insert(user).values([
           { id: "user-a", name: "User A", email: "a@example.test" },
@@ -556,8 +558,11 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
             !finalists.some((finalist) => finalist?.name === team.name))!.name;
           assert.equal(await saveActualResults({ ...simulated, championship: outsider }), 66);
           assert.equal((await winnerRows()).some((row) => row.gameId === "championship"), false);
+          // Resetting clears the winners and scores but keeps players' picks.
+          const picksBeforeReset = await tx.select().from(picks).orderBy(picks.gameId);
           assert.equal((await clearResults(resultsRequest("DELETE"))).status, 200);
           assert.deepEqual(await winnerRows(), []);
+          assert.deepEqual(await tx.select().from(picks).orderBy(picks.gameId), picksBeforeReset);
           activeSession = sessionFor("user-a");
 
           const olderGameId = randomUUID();

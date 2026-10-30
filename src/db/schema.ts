@@ -51,6 +51,10 @@ export const games = pgTable("games", {
   team1Id: uuid("team1_id").references(() => teams.id),
   team2Id: uuid("team2_id").references(() => teams.id),
   actualWinnerTeamId: uuid("actual_winner_team_id").references(() => teams.id),
+  // The final score, in the order of the teams that actually played the game
+  // (top then bottom in the bracket).
+  actualScore1: integer("actual_score1"),
+  actualScore2: integer("actual_score2"),
 });
 
 export const groups = pgTable(

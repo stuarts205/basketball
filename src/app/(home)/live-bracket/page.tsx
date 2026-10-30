@@ -1,14 +1,20 @@
 import React from "react";
 import { LiveBracketView } from "@/components/live-bracket-view";
 import { PageHeader } from "@/components/page-header";
-import { loadCbsBracket } from "@/lib/cbs-bracket";
+import { loadBracketFromDatabase } from "@/lib/load-bracket";
+import { resultsAsBracket } from "@/lib/simulate";
+import { BracketState } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+// Draws the saved tournament results, the same ones every bracket is scored
+// against, for now the super admin's simulations. The real results can still
+// be read from CBS with loadCbsBracket in @/lib/cbs-bracket.
 export default async function LiveBracket() {
-  let bracket: Awaited<ReturnType<typeof loadCbsBracket>> | null = null;
+  let bracket: { year: number; state: BracketState } | null = null;
   try {
-    bracket = await loadCbsBracket();
+    const { year, state, results, scores } = await loadBracketFromDatabase();
+    bracket = { year, state: resultsAsBracket(state, results, scores) };
   } catch (error) {
     console.error("Could not load the live bracket", error);
   }

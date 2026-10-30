@@ -2,7 +2,9 @@ import { auth } from "@/lib/auth";
 import { resetActualResults, saveActualResults } from "@/lib/results";
 
 // The tournament's actual winners, shared by every group. Only the super
-// admin can set them. PUT body: { winners: { [gameId]: teamName } }.
+// admin can set them. PUT body: { winners: { [gameId]: teamName },
+// scores?: { [gameId]: [points, points] } }, with each game's points in the
+// order of the teams that played it.
 async function requireSuperAdmin(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session)
@@ -45,7 +47,31 @@ export async function PUT(request: Request) {
       );
     }
 
-    const saved = await saveActualResults(winners as Record<string, string>);
+    const scores =
+      body && typeof body === "object" && "scores" in body
+        ? body.scores
+        : {};
+    if (
+      !scores ||
+      typeof scores !== "object" ||
+      Array.isArray(scores) ||
+      Object.values(scores).some(
+        (score) =>
+          !Array.isArray(score) ||
+          score.length !== 2 ||
+          !score.every((points) => Number.isInteger(points) && points >= 0),
+      )
+    ) {
+      return Response.json(
+        { error: "scores must map game IDs to two point totals" },
+        { status: 400 },
+      );
+    }
+
+    const saved = await saveActualResults(
+      winners as Record<string, string>,
+      scores as Record<string, [number, number]>,
+    );
     return Response.json({ saved });
   } catch (error) {
     console.error("Could not save results", error);

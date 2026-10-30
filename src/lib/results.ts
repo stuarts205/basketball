@@ -2,16 +2,18 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { games, teams } from "@/db/schema";
 import { bracketMatches, loadBracketFromDatabase } from "@/lib/load-bracket";
-import { SimResults, applyResults } from "@/lib/simulate";
+import { SimResults, SimScores, applyResults } from "@/lib/simulate";
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-// Saves the tournament's results: the winning team's name by game id. Each
-// winner must have played in that game given the earlier winners, so they are
-// walked through the bracket first; games without a valid winner are cleared.
+// Saves the tournament's results: the winning team's name by game id, and
+// optionally each game's final score. Each winner must have played in that
+// game given the earlier winners, so they are walked through the bracket
+// first; games without a valid winner are cleared, score and all.
 // Returns how many games now have a winner.
 export async function saveActualResults(
   winners: SimResults,
+  scores: SimScores = {},
   database: Pick<typeof db, "transaction"> = db,
 ): Promise<number> {
   return database.transaction(async (tx) => {
@@ -36,7 +38,11 @@ export async function saveActualResults(
     for (const match of decided) {
       await tx
         .update(games)
-        .set({ actualWinnerTeamId: teamIdByName.get(match.actualWinner!.name)! })
+        .set({
+          actualWinnerTeamId: teamIdByName.get(match.actualWinner!.name)!,
+          actualScore1: scores[match.id]?.[0] ?? null,
+          actualScore2: scores[match.id]?.[1] ?? null,
+        })
         .where(and(eq(games.gameId, match.id), eq(games.year, year)));
     }
     return decided.length;
@@ -46,11 +52,12 @@ export async function saveActualResults(
 async function clearActualResults(year: number, tx: Transaction) {
   await tx
     .update(games)
-    .set({ actualWinnerTeamId: null })
+    .set({ actualWinnerTeamId: null, actualScore1: null, actualScore2: null })
     .where(eq(games.year, year));
 }
 
-// Clears every result in the current tournament.
+// Clears every result in the current tournament: each game's actual winner
+// and score. Players' picks are kept.
 export async function resetActualResults(
   database: Pick<typeof db, "transaction"> = db,
 ) {

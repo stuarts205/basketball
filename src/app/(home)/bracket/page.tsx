@@ -82,7 +82,7 @@ export default async function BracketPage({
     userBrackets[0] ??
     null;
   // Each group has its own brackets, so only the shown bracket's picks load.
-  const [{ state, year, results }, availableGroups, bracketChoices] =
+  const [{ state, year, results, scores }, availableGroups, bracketChoices] =
     await Promise.all([
       loadBracketFromDatabase(
         activeGroup && activeBracket
@@ -128,6 +128,7 @@ export default async function BracketPage({
             title={title}
             subtitle={subtitle}
             savedResults={results}
+            savedScores={scores}
           />
         )}
       </div>

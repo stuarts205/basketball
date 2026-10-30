@@ -6,6 +6,21 @@ import { BracketConfirmModal } from "@/components/bracket-confirm-modal";
 import { ResetDataModal } from "@/components/reset-data-modal";
 import { authClient } from "@/lib/auth-client";
 import {
+  BasketballIcon,
+  BracketIcon,
+  CheckIcon,
+  ChevronIcon,
+  EllipsisIcon,
+  LiveBracketIcon,
+  MenuIcon,
+  PlusIcon,
+  ResetIcon,
+  SettingsIcon,
+  SidebarIcon,
+  TrashIcon,
+  TrophyIcon,
+} from "@/lib/icons";
+import {
   BracketSummary,
   GroupSummary,
   MAX_BRACKETS,
@@ -21,7 +36,8 @@ export const APP_NAME = "PickEm";
 
 const NAV_ITEMS = [
   { href: "/bracket", label: "My Bracket", icon: BracketIcon },
-  { href: "/live-bracket", label: " Live Bracket", icon: BracketIcon }
+  { href: "/live-bracket", label: " Live Bracket", icon: LiveBracketIcon },
+  { href: "/leaderboard", label: "Leaderboard", icon: TrophyIcon }
 ];
 
 // Matches the page itself and pages nested under it, so "/bracket" isn't
@@ -571,33 +587,6 @@ const UserMenu = ({
   );
 };
 
-function BasketballIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-8 w-8 text-ball-500" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden>
-      <circle cx="12" cy="12" r="9.5" />
-      <path d="M2.5 12h19M12 2.5v19M5.3 5.3c3.2 3.2 3.2 10.2 0 13.4M18.7 5.3c-3.2 3.2-3.2 10.2 0 13.4" />
-    </svg>
-  );
-}
-
-function BracketIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
-      <path d="M3 5h5v6H3M3 13h5v6H3M8 8h4v8H8M12 12h5M21 9v6h-4V9z" />
-    </svg>
-  );
-}
-
-// A panel with its left column marked, for showing and hiding the sidebar.
-function SidebarIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <path d="M9 4v16" />
-    </svg>
-  );
-}
-
 // The options next to one of the user's brackets: reset its picks or delete
 // it. Each is confirmed in a popup before anything changes.
 function BracketMenu({
@@ -670,81 +659,5 @@ function BracketMenu({
         </div>
       )}
     </div>
-  );
-}
-
-function EllipsisIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor" aria-hidden>
-      <circle cx="5" cy="12" r="2" />
-      <circle cx="12" cy="12" r="2" />
-      <circle cx="19" cy="12" r="2" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
-      <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />
-    </svg>
-  );
-}
-
-// A circular arrow, for resetting a bracket's picks.
-function ResetIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
-      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-      <path d="M3 3v5h5" />
-    </svg>
-  );
-}
-
-function MenuIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <path d="M4 6h16M4 12h16M4 18h16" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
-      <path d="m5 12 5 5 9-10" />
-    </svg>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={`h-4 w-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      aria-hidden
-    >
-      <path d="m6 9 6 6 6-6" />
-    </svg>
   );
 }

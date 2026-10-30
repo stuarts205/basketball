@@ -7,10 +7,16 @@ import {
   SimScores,
   actualScores,
   applyResults,
+  completedRounds,
   resultsAsBracket,
   simulateResults,
 } from "@/lib/simulate";
-import { BracketScore, scoreBracket } from "@/lib/scoring";
+import {
+  BracketScore,
+  ROUND_POINTS,
+  percentWon,
+  scoreBracket,
+} from "@/lib/scoring";
 import { BracketView } from "./bracket-view";
 import { PageHeader } from "./page-header";
 
@@ -19,9 +25,11 @@ export const FullBracket = ({
   groupId,
   bracketNumber,
   isSuperAdmin,
+  readOnly = false,
   title,
   subtitle,
   savedResults,
+  savedScores,
 }: {
   initialState: BracketState;
   // The group whose bracket is shown; picks are saved only with one.
@@ -30,11 +38,15 @@ export const FullBracket = ({
   bracketNumber: number;
   // The super admin's simulations are saved as the tournament's results.
   isSuperAdmin: boolean;
+  // Someone else's bracket, opened from the leaderboard: shown but not picked.
+  readOnly?: boolean;
   // The page's title row, drawn here so the bracket's buttons share it.
   title: React.ReactNode;
   subtitle?: React.ReactNode;
   // The saved actual winners, shown over the picks when the page opens.
   savedResults: SimResults;
+  // The saved final scores of those games.
+  savedScores: SimScores;
 }) => {
   const [state, setState] = useState(initialState);
   // A server refresh (e.g. after copying or resetting picks) replaces local
@@ -50,7 +62,7 @@ export const FullBracket = ({
   // The saved results, or null when no game has a result yet.
   const saved =
     Object.keys(savedResults).length > 0
-      ? { winners: savedResults, saved: true }
+      ? { winners: savedResults, scores: savedScores, saved: true }
       : null;
   const [results, setResults] = useState<{
     winners: SimResults;
@@ -68,7 +80,7 @@ export const FullBracket = ({
   const [storeStatus, setStoreStatus] = useState<string | null>(null);
   const [storeError, setStoreError] = useState<string | null>(null);
 
-  async function storeResults(winners: SimResults | null) {
+  async function storeResults(winners: SimResults | null, scores?: SimScores) {
     if (!isSuperAdmin) return;
     setStoring(true);
     setStoreStatus(null);
@@ -80,7 +92,7 @@ export const FullBracket = ({
           ? {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ winners }),
+              body: JSON.stringify({ winners, scores }),
             }
           : { method: "DELETE" },
       );
@@ -90,7 +102,7 @@ export const FullBracket = ({
       setStoreStatus(
         winners
           ? `Saved ${body.saved} winners as the tournament results for everyone.`
-          : "Cleared the saved tournament results.",
+          : "Cleared the scores and actual winners.",
       );
     } catch (error) {
       setStoreError(
@@ -154,7 +166,7 @@ export const FullBracket = ({
       // For now the super admin's ESPN results are also saved as every game's
       // actual winner, which all users' picks are scored against. Later the
       // results will be kept up to date automatically during the tournament.
-      storeResults(actual.winners);
+      storeResults(actual.winners, actualScores(state, actual));
     } catch (error) {
       setActualError(
         error instanceof Error ? error.message : "Could not load results",
@@ -203,6 +215,10 @@ export const FullBracket = ({
     }
   }
 
+  // Rounds with every game decided; the next round is the latest one that can
+  // be simulated.
+  const roundsDone = results ? completedRounds(state, results.winners) : 0;
+
   // Spins the menu button while results are loading or saving.
   const busyLabel = storing || loadingActual;
   const menuLabel = "Simulation and reset options";
@@ -239,11 +255,43 @@ export const FullBracket = ({
                     onSelect={() => {
                       const simulated = simulateResults(state);
                       setResults(simulated);
-                      storeResults(simulated.winners);
+                      storeResults(simulated.winners, simulated.scores);
                     }}
                   >
                     {simulated ? "Re-simulate" : "Simulate Results"}
                   </MenuItem>
+                  <div className="my-1 border-t border-gray-100" />
+                  <p className="px-3 pb-1 pt-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                    Simulate through
+                  </p>
+                  {ROUND_POINTS.map((round, index) => (
+                    // Keeps the results already shown, plays this round and
+                    // clears the later rounds. A round can only be played
+                    // once every game before it has a result.
+                    <MenuItem
+                      key={round.name}
+                      disabled={storing || index > roundsDone}
+                      hint={
+                        index > roundsDone
+                          ? `Simulate the ${ROUND_POINTS[index - 1].name} first`
+                          : index === 0
+                            ? "Plays the First Four and Round of 64"
+                            : `Keeps earlier results and plays through the ${round.name}`
+                      }
+                      onSelect={() => {
+                        const simulated = simulateResults(
+                          state,
+                          index + 1,
+                          results ?? undefined,
+                        );
+                        setResults(simulated);
+                        storeResults(simulated.winners, simulated.scores);
+                      }}
+                    >
+                      {round.name}
+                    </MenuItem>
+                  ))}
+                  <div className="my-1 border-t border-gray-100" />
                   <MenuItem
                     checked={results?.actual === true}
                     disabled={loadingActual}
@@ -253,7 +301,7 @@ export const FullBracket = ({
                   </MenuItem>
                   <MenuItem
                     disabled={storing}
-                    hint="Also clears the saved tournament results"
+                    hint="Clears the scores and actual winners; picks are kept"
                     onSelect={() => {
                       setResults(null);
                       setActualError(null);
@@ -273,7 +321,9 @@ export const FullBracket = ({
           score={score}
           label={
             results?.saved
-              ? "Your score"
+              ? readOnly
+                ? "Score"
+                : "Your score"
               : results?.actual
                 ? "Actual score"
                 : "Simulated score"
@@ -290,7 +340,7 @@ export const FullBracket = ({
           {storing ? "Saving tournament results..." : storeStatus}
         </p>
       )}
-      {isSuperAdmin ? (
+      {isSuperAdmin || readOnly ? (
         // Nothing to pick: the bracket is for viewing results.
         <fieldset disabled className="min-w-0 [&_button]:pointer-events-none">
           <BracketView state={shown} onSelectTeam={() => {}} />
@@ -313,6 +363,7 @@ function ScoreSummary({
   score: BracketScore;
   label: string;
 }) {
+  const percent = percentWon(score);
   return (
     <section
       aria-label={label}
@@ -328,6 +379,11 @@ function ScoreSummary({
         <span className="text-sm tabular-nums text-gray-400">
           / {score.maxPoints} pts
         </span>
+        {percent !== null && (
+          <span className="text-sm font-semibold tabular-nums text-gray-500">
+            · {percent}% of {score.playedPoints} points so far
+          </span>
+        )}
       </div>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {score.rounds.map((round) => (

@@ -76,6 +76,8 @@ export async function loadBracketFromDatabase(
   year: number;
   // The saved results: each decided game's winning team name, by game id.
   results: Record<string, string>;
+  // The saved final scores by game id, in the order of the teams that played.
+  scores: Record<string, [number, number]>;
 }> {
   const [latestYear] = await database
     .select({ year: games.year })
@@ -113,6 +115,13 @@ export async function loadBracketFromDatabase(
           game.actualWinnerTeamId && teamNameById.get(game.actualWinnerTeamId);
         return winner ? [[game.gameId, winner]] : [];
       }),
+    ),
+    scores: Object.fromEntries(
+      gameRows.flatMap((game) =>
+        game.actualScore1 !== null && game.actualScore2 !== null
+          ? [[game.gameId, [game.actualScore1, game.actualScore2]]]
+          : [],
+      ),
     ),
   };
 }

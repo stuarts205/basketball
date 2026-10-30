@@ -93,15 +93,62 @@ function simulateScore(winner: Team, loser: Team): [number, number] {
   return [winnerPoints, Math.max(40, winnerPoints - margin)];
 }
 
-// Plays every game in the tournament, weighted by seed, with a final score.
-export function simulateResults(state: BracketState): {
+// The ids of the games played through the given round, counting the Round of
+// 64 as round 1. The First Four comes before it, so it's always included;
+// rounds 5 and 6 are the Final Four and the championship.
+function gamesThroughRound(state: BracketState, throughRound: number) {
+  const ids = new Set(state.firstFour?.map((match) => match.id));
+  for (const region of state.regions) {
+    region.rounds
+      .slice(0, throughRound)
+      .forEach((round) => round.matches.forEach((match) => ids.add(match.id)));
+  }
+  if (throughRound >= 5) state.ff.forEach((match) => ids.add(match.id));
+  if (throughRound >= 6) ids.add(state.championship.id);
+  return ids;
+}
+
+// How many rounds have a winner in every game, counting as in
+// `gamesThroughRound`: 0 before the First Four and Round of 64 are done, 6
+// once the championship is.
+export function completedRounds(state: BracketState, winners: SimResults) {
+  let completed = 0;
+  while (
+    completed < 6 &&
+    [...gamesThroughRound(state, completed + 1)].every((id) => id in winners)
+  ) {
+    completed++;
+  }
+  return completed;
+}
+
+// Plays the tournament, weighted by seed, with a final score. With
+// `throughRound`, games after that round are left unplayed. Games in `kept`
+// keep their result, so a round can be played on top of the earlier ones.
+export function simulateResults(
+  state: BracketState,
+  throughRound?: number,
+  kept?: { winners: SimResults; scores?: SimScores },
+): {
   winners: SimResults;
   scores: SimScores;
 } {
   const winners: SimResults = {};
   const scores: SimScores = {};
+  const played =
+    throughRound === undefined ? null : gamesThroughRound(state, throughRound);
   walkActual(state, (match, [top, bottom]) => {
     if (!top || !bottom) return null;
+    if (played && !played.has(match.id)) return null;
+    const keptWinner = [top, bottom].find(
+      (team) => team.name === kept?.winners[match.id],
+    );
+    if (keptWinner) {
+      winners[match.id] = keptWinner.name;
+      const keptScore = kept?.scores?.[match.id];
+      if (keptScore) scores[match.id] = keptScore;
+      return keptWinner;
+    }
     const topWins = Math.random() < topWinChance(top, bottom);
     const winner = topWins ? top : bottom;
     winners[match.id] = winner.name;
