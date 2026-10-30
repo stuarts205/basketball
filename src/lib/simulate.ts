@@ -160,6 +160,30 @@ export function actualScores(
   return scores;
 }
 
+// Draws the results themselves as the bracket, with no picks: each game shows
+// the teams that actually played, the actual winner and the score. For viewers
+// who don't make picks, like the super admin.
+export function resultsAsBracket(
+  state: BracketState,
+  results: SimResults,
+  scores?: SimScores,
+): BracketState {
+  return mapMatches(applyResults(state, results), (match) => {
+    const teams = match.actualTeams ?? match.teams;
+    return {
+      ...match,
+      teams,
+      pendingTeams: undefined,
+      winner: match.actualWinner ?? null,
+      actualTeams: undefined,
+      actualWinner: undefined,
+      score: teams.map((team, i) =>
+        team ? (scores?.[match.id]?.[i] ?? null) : null,
+      ) as [number | null, number | null],
+    };
+  });
+}
+
 export function applyResults(
   state: BracketState,
   results: SimResults,

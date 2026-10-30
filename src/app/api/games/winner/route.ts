@@ -11,6 +11,13 @@ const notAMember = {
   body: { error: "You are not a member of that group" },
 } as const;
 
+// The super admin runs the tournament and makes no picks.
+const adminCannotPick = () =>
+  Response.json(
+    { error: "The super admin doesn't make picks" },
+    { status: 403 },
+  );
+
 const noSuchBracket = {
   status: 404,
   body: { error: "You don't have that bracket in this group" },
@@ -21,6 +28,7 @@ export async function DELETE(request: Request) {
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session)
       return Response.json({ error: "Sign in to reset picks" }, { status: 401 });
+    if (session.user.isSuperAdmin) return adminCannotPick();
 
     const params = new URL(request.url).searchParams;
     const groupId = params.get("groupId") ?? "";
@@ -69,6 +77,7 @@ export async function PUT(request: Request) {
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session)
       return Response.json({ error: "Sign in to save picks" }, { status: 401 });
+    if (session.user.isSuperAdmin) return adminCannotPick();
 
     let body: unknown;
     try {
@@ -131,6 +140,8 @@ export async function PUT(request: Request) {
           body: { error: "Both feeder games need winners before this pick" },
         };
       }
+      if (game.actualWinnerTeamId)
+        return { status: 409, body: { error: "This game is already over" } };
       if (!match.teams.some((team) => team?.name === teamName))
         return { status: 400, body: { error: "Team is not part of this game" } };
 

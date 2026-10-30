@@ -1,5 +1,9 @@
 import { auth } from "@/lib/auth";
-import { createBracket } from "@/lib/brackets";
+import {
+  createBracket,
+  deleteBracket,
+  parseBracketNumber,
+} from "@/lib/brackets";
 import { UUID_PATTERN } from "@/lib/groups";
 import { BRACKET_NAME_MAX_LENGTH, MAX_BRACKETS } from "@/lib/types";
 
@@ -16,6 +20,11 @@ export async function POST(
       return Response.json(
         { error: "Sign in to add a bracket" },
         { status: 401 },
+      );
+    if (session.user.isSuperAdmin)
+      return Response.json(
+        { error: "The super admin doesn't make picks" },
+        { status: 403 },
       );
 
     let body: unknown;
@@ -64,5 +73,54 @@ export async function POST(
   } catch (error) {
     console.error("Could not add a bracket", error);
     return Response.json({ error: "Could not add a bracket" }, { status: 500 });
+  }
+}
+
+// Deletes one of the signed-in user's brackets in this group, with all its
+// picks. Later brackets move up a number. Query: ?number=1..MAX_BRACKETS.
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ groupId: string }> },
+) {
+  try {
+    const session = await auth.api.getSession({ headers: request.headers });
+    if (!session)
+      return Response.json(
+        { error: "Sign in to delete a bracket" },
+        { status: 401 },
+      );
+    if (session.user.isSuperAdmin)
+      return Response.json(
+        { error: "The super admin doesn't make picks" },
+        { status: 403 },
+      );
+
+    const { groupId } = await params;
+    const rawNumber = new URL(request.url).searchParams.get("number");
+    const number = rawNumber ? parseBracketNumber(rawNumber) : null;
+    if (!UUID_PATTERN.test(groupId) || !number)
+      return Response.json(
+        { error: "A group and bracket number are required" },
+        { status: 400 },
+      );
+
+    const result = await deleteBracket(session.user.id, groupId, number);
+    if (result === "not-member")
+      return Response.json(
+        { error: "You are not a member of that group" },
+        { status: 404 },
+      );
+    if (result === "not-found")
+      return Response.json(
+        { error: "You don't have that bracket in this group" },
+        { status: 404 },
+      );
+    return Response.json({ deleted: true });
+  } catch (error) {
+    console.error("Could not delete a bracket", error);
+    return Response.json(
+      { error: "Could not delete the bracket" },
+      { status: 500 },
+    );
   }
 }

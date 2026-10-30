@@ -40,6 +40,11 @@ export const CONNECTOR_W = 24;
 // Elite 8 cards slide back so the vertical connector runs through their middle.
 export const ROUND_INSETS = [0, 0, CARD_W * 0.6, CONNECTOR_W + CARD_W / 2];
 export const DESKTOP_REGION_GAP = 240;
+// Lines joining games: white, with a dark edge (BRACKET_LINE_CLASS on the
+// svg) so they show up on the light wood.
+export const BRACKET_LINE_COLOR = "#ffffff";
+export const BRACKET_LINE_CLASS =
+  "[filter:drop-shadow(0_0_1px_rgb(28_23_21/0.55))]";
 // Space between a region's round names and its region name (Tailwind gap-6).
 export const ROUND_NAMES_GAP = 24;
 

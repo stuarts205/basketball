@@ -60,68 +60,80 @@ export default async function BracketPage({
     userGroups,
     cookieStore.get(ACTIVE_GROUP_COOKIE)?.value,
   );
+  // The super admin runs the tournament rather than playing, so they are
+  // never made to join a group, choose one, or name a bracket.
+  const isSuperAdmin = session.user.isSuperAdmin;
   // Members of several groups choose one each time they sign in.
   const mustChooseGroup =
+    !isSuperAdmin &&
     userGroups.length > 1 &&
     cookieStore.get(ACTIVE_GROUP_SESSION_COOKIE)?.value !== session.session.id;
   // An unknown or missing ?b= shows the user's first bracket.
   const { b } = await searchParams;
-  const [userBrackets, namedBracket] = activeGroup
-    ? await Promise.all([
-        listBrackets(session.user.id, activeGroup.id),
-        hasNamedBracket(session.user.id, activeGroup.id),
-      ])
-    : [[], false];
+  const [userBrackets, namedBracket] =
+    activeGroup && !isSuperAdmin
+      ? await Promise.all([
+          listBrackets(session.user.id, activeGroup.id),
+          hasNamedBracket(session.user.id, activeGroup.id),
+        ])
+      : [[], false];
   const activeBracket =
     userBrackets.find((bracket) => String(bracket.number) === b) ??
     userBrackets[0] ??
     null;
   // Each group has its own brackets, so only the shown bracket's picks load.
-  const [{ state, year }, availableGroups, bracketChoices] = await Promise.all([
-    loadBracketFromDatabase(
-      activeGroup && activeBracket
-        ? {
-            userId: session.user.id,
-            groupId: activeGroup.id,
-            bracketNumber: activeBracket.number,
-          }
-        : undefined,
-    ),
-    activeGroup ? [] : listGroups(),
-    mustChooseGroup ? listBracketChoices(session.user.id) : [],
-  ]);
+  const [{ state, year, results }, availableGroups, bracketChoices] =
+    await Promise.all([
+      loadBracketFromDatabase(
+        activeGroup && activeBracket
+          ? {
+              userId: session.user.id,
+              groupId: activeGroup.id,
+              bracketNumber: activeBracket.number,
+            }
+          : undefined,
+      ),
+      activeGroup || isSuperAdmin ? [] : listGroups(),
+      mustChooseGroup ? listBracketChoices(session.user.id) : [],
+    ]);
   // A member with no bracket in the group yet names their first one before
   // picking. Without a named bracket only bracket 1 exists, so `state` is it.
   const mustNameBracket =
+    !isSuperAdmin &&
     activeGroup !== null &&
     !mustChooseGroup &&
     !namedBracket &&
     !bracketMatches(state).some((match) => match.winner);
+  const title = `${year} NCAA Tournament`;
+  const subtitle = isSuperAdmin
+    ? "Simulate results to set every game's winner for all groups"
+    : activeGroup
+      ? `${activeBracket?.name ?? "Your picks"} for ${activeGroup.name}. Click any team to advance them to the next round`
+      : "Click any team to advance them to the next round";
 
   return (
     <div className="min-h-screen bg-court p-6 pt-16 lg:px-3 lg:pt-6">
       <div className="w-full min-w-0 mx-auto">
-        <PageHeader
-          title={`${year} NCAA Tournament`}
-          subtitle={
-            activeGroup
-              ? `${activeBracket?.name ?? "Your picks"} for ${activeGroup.name}. Click any team to advance them to the next round`
-              : "Click any team to advance them to the next round"
-          }
-        />
-        {/* The bracket stays hidden until its name is saved. */}
-        {!mustNameBracket && (
+        {/* The bracket stays hidden until its name is saved. Otherwise it
+            draws the title row itself, with its buttons on the same row. */}
+        {mustNameBracket ? (
+          <PageHeader title={title} subtitle={subtitle} />
+        ) : (
           <FullBracket
             key={`${session.user.id}:${activeGroup?.id ?? ""}:${activeBracket?.number ?? 1}`}
             initialState={state}
-            groupId={activeGroup?.id ?? null}
-            groupName={activeGroup?.name ?? null}
+            groupId={isSuperAdmin ? null : (activeGroup?.id ?? null)}
             bracketNumber={activeBracket?.number ?? 1}
-            bracketName={activeBracket?.name ?? null}
+            isSuperAdmin={isSuperAdmin}
+            title={title}
+            subtitle={subtitle}
+            savedResults={results}
           />
         )}
       </div>
-      {!activeGroup && <GroupPickerModal groups={availableGroups} />}
+      {!activeGroup && !isSuperAdmin && (
+        <GroupPickerModal groups={availableGroups} />
+      )}
       {mustNameBracket && activeGroup && (
         <NewBracketModal
           groupId={activeGroup.id}

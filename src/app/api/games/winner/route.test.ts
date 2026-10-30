@@ -17,6 +17,12 @@ import {
 import { bracketMatches, loadBracketFromDatabase } from "@/lib/load-bracket";
 import type { BracketState, Match } from "@/lib/types";
 import { DELETE, PUT } from "./route";
+import { DELETE as clearResults, PUT as saveResults } from "../results/route";
+import { saveActualResults } from "@/lib/results";
+import { applyResults, resultsAsBracket, simulateResults } from "@/lib/simulate";
+import {
+  DELETE as createBracketDelete, POST as createBracketRoute,
+} from "../../groups/[groupId]/brackets/route";
 
 test("user picks stay isolated through completed-bracket edits and resets", async (t) => {
   const rollback = new Error("Roll back regression test picks");
@@ -38,7 +44,9 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           await tx.execute(sql.raw(statement.replaceAll('"public".', `"${testSchema}".`)));
         }
         await tx.insert(teams).values(teamRows);
-        await tx.insert(games).values(before);
+        // Start from a tournament with no results, whatever the real one has.
+        const unplayed = before.map((game) => ({ ...game, actualWinnerTeamId: null }));
+        await tx.insert(games).values(unplayed);
         await tx.insert(user).values([
           { id: "user-a", name: "User A", email: "a@example.test" },
           { id: "user-b", name: "User B", email: "b@example.test" },
@@ -484,6 +492,74 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
             bracketMatches(firstBracket.state).filter((match) => match.winner).length,
           );
 
+          // Only the super admin saves results, and only winners who played
+          // in each game given the earlier winners.
+          const resultsRequest = (method: string, winners?: unknown) =>
+            new Request("http://localhost/api/games/results", {
+              method, ...(winners ? { body: JSON.stringify({ winners }) } : {}),
+            });
+          const winnerRows = () => tx.select({ gameId: games.gameId, winner: teams.name })
+            .from(games).innerJoin(teams, eq(games.actualWinnerTeamId, teams.id))
+            .where(eq(games.year, 2026));
+          const simulated = simulateResults(anonymous.state).winners;
+          assert.equal((await saveResults(resultsRequest("PUT", simulated))).status, 403);
+          assert.equal((await clearResults(resultsRequest("DELETE"))).status, 403);
+          activeSession = { ...sessionFor("user-a"), user: { ...sessionFor("user-a").user, isSuperAdmin: true } };
+          assert.equal((await saveResults(resultsRequest("PUT", "nope"))).status, 400);
+          // The super admin makes no picks and has no brackets.
+          assert.equal((await putInBracket(1)).status, 403);
+          assert.equal((await DELETE(new Request(
+            `http://localhost/api/games/winner?groupId=${mainGroup}`, { method: "DELETE" },
+          ))).status, 403);
+          assert.equal((await createBracketRoute(
+            new Request(`http://localhost/api/groups/${mainGroup}/brackets`, {
+              method: "POST", body: JSON.stringify({ name: "Admin's" }),
+            }),
+            { params: Promise.resolve({ groupId: mainGroup }) },
+          )).status, 403);
+          // What the super admin sees: the results as the bracket, every round
+          // filled in with the real winners and scores, and no picks.
+          const simulatedScores = simulateResults(anonymous.state);
+          const adminView = resultsAsBracket(
+            anonymous.state, simulatedScores.winners, simulatedScores.scores,
+          );
+          for (const match of bracketMatches(adminView)) {
+            assert.equal(match.winner?.name, simulatedScores.winners[match.id], match.id);
+            assert.ok(match.teams.every(Boolean), `${match.id} has both teams`);
+            assert.deepEqual(match.score, simulatedScores.scores[match.id], match.id);
+            assert.equal(match.actualWinner, undefined);
+          }
+          const saved = await saveResults(resultsRequest("PUT", simulated));
+          assert.equal(saved.status, 200);
+          assert.equal((await saved.json()).saved, 67);
+          assert.deepEqual(
+            Object.fromEntries((await winnerRows()).map((row) => [row.gameId, row.winner])),
+            simulated,
+          );
+          // Players get the saved results with their bracket, and can no
+          // longer pick games that are over.
+          assert.deepEqual(
+            (await loadBracketFromDatabase({ userId: "user-b", groupId: mainGroup }, tx)).results,
+            simulated,
+          );
+          activeSession = sessionFor("user-b");
+          const lateRequest = await PUT(new Request("http://localhost/api/games/winner", {
+            method: "PUT",
+            body: JSON.stringify({ groupId: mainGroup, gameId: "east-r64-1", teamName: "Duke" }),
+          }));
+          assert.equal(lateRequest.status, 409);
+          assert.equal((await lateRequest.json()).error, "This game is already over");
+          activeSession = { ...sessionFor("user-a"), user: { ...sessionFor("user-a").user, isSuperAdmin: true } };
+          // A champion who never reached the final is not saved.
+          const finalists = applyResults(anonymous.state, simulated).championship.actualTeams!;
+          const outsider = teamRows.find((team) =>
+            !finalists.some((finalist) => finalist?.name === team.name))!.name;
+          assert.equal(await saveActualResults({ ...simulated, championship: outsider }), 66);
+          assert.equal((await winnerRows()).some((row) => row.gameId === "championship"), false);
+          assert.equal((await clearResults(resultsRequest("DELETE"))).status, 200);
+          assert.deepEqual(await winnerRows(), []);
+          activeSession = sessionFor("user-a");
+
           const olderGameId = randomUUID();
           await tx.insert(games).values({
             id: olderGameId, gameId: "previous-tournament", year: 2025,
@@ -493,6 +569,11 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
             userId: "user-a", groupId: mainGroup, gameId: olderGameId,
             winnerTeamId: teamRows[0].id,
           });
+          // A pick in bracket 3 must survive resetting bracket 1.
+          assert.equal((await putInBracket(3)).status, 200);
+          const thirdBefore = (await loadBracketFromDatabase(
+            { userId: "user-a", groupId: mainGroup, bracketNumber: 3 }, tx,
+          )).state;
           const response = await DELETE(new Request(`http://localhost/api/games/winner?groupId=${mainGroup}`, {
             method: "DELETE",
           }));
@@ -501,16 +582,52 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           assert.equal((await tx.select().from(picks).where(and(
             eq(picks.userId, "user-a"), eq(picks.gameId, olderGameId),
           ))).length, 1);
-          // Only the older tournament's row survives in the reset group.
+          // Only the older tournament's row survives in the reset bracket.
           assert.equal((await tx.select().from(picks).where(and(
-            eq(picks.userId, "user-a"), eq(picks.groupId, mainGroup),
+            eq(picks.userId, "user-a"), eq(picks.groupId, mainGroup), eq(picks.bracketNumber, 1),
           ))).length, 1);
+          assert.deepEqual((await loadBracketFromDatabase(
+            { userId: "user-a", groupId: mainGroup, bracketNumber: 3 }, tx,
+          )).state, thirdBefore, "resetting bracket 1 must not touch bracket 3");
+          assert.equal((await tx.select().from(picks).where(and(
+            eq(picks.userId, "user-a"), eq(picks.groupId, mainGroup), eq(picks.bracketNumber, 3),
+          ))).length, 1);
+
+          // Deleting a bracket removes it and its picks; later brackets move
+          // up a number with their names and picks.
+          const deleteRequest = (number: string) => createBracketDelete(
+            new Request(`http://localhost/api/groups/${mainGroup}/brackets?number=${number}`, {
+              method: "DELETE",
+            }),
+            { params: Promise.resolve({ groupId: mainGroup }) },
+          );
+          assert.equal((await deleteRequest("x")).status, 400);
+          assert.equal((await deleteRequest("2")).status, 200);
+          assert.deepEqual(await listBrackets("user-a", mainGroup, tx), [
+            { number: 1, name: DEFAULT_BRACKET_NAME },
+            { number: 2, name: "Chalk" },
+          ]);
+          assert.deepEqual((await loadBracketFromDatabase(
+            { userId: "user-a", groupId: mainGroup, bracketNumber: 2 }, tx,
+          )).state, thirdBefore, "bracket 3 moves up to 2 with its picks");
+          assert.equal((await deleteRequest("3")).status, 404);
+          // Deleting the first bracket makes the next one the first.
+          assert.equal((await deleteRequest("1")).status, 200);
+          assert.deepEqual(await listBrackets("user-a", mainGroup, tx), [
+            { number: 1, name: "Chalk" },
+          ]);
+          assert.deepEqual((await loadBracketFromDatabase(
+            { userId: "user-a", groupId: mainGroup }, tx,
+          )).state, thirdBefore);
+          assert.equal((await tx.select().from(picks).where(and(
+            eq(picks.userId, "user-a"), eq(picks.groupId, mainGroup), eq(picks.bracketNumber, 2),
+          ))).length, 0);
           assert.deepEqual((await loadBracketFromDatabase(
             { userId: "user-b", groupId: mainGroup }, tx,
           )).state, otherState);
           assert.deepEqual(
             await tx.select().from(games).where(eq(games.year, 2026)).orderBy(games.id),
-            before,
+            unplayed,
           );
         } finally {
           transactionMock.mock.restore();

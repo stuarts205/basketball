@@ -28,9 +28,12 @@ export default async function HomeLayout({
     userGroups,
     cookieStore.get(ACTIVE_GROUP_COOKIE)?.value,
   );
-  // Brackets show in the menu once the user has named one in the group.
+  // Brackets show in the menu once the user has named one in the group. The
+  // super admin makes no picks, so has none.
   const userBrackets =
-    activeGroup && (await hasNamedBracket(session.user.id, activeGroup.id))
+    activeGroup &&
+    !session.user.isSuperAdmin &&
+    (await hasNamedBracket(session.user.id, activeGroup.id))
       ? await listBrackets(session.user.id, activeGroup.id)
       : [];
   const joinedIds = new Set(userGroups.map((group) => group.id));

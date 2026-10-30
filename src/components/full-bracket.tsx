@@ -1,93 +1,141 @@
 "use client";
 import { BracketState, Match, Team } from "@/lib/types";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActualResults,
   SimResults,
   SimScores,
   actualScores,
   applyResults,
+  resultsAsBracket,
   simulateResults,
 } from "@/lib/simulate";
 import { BracketScore, scoreBracket } from "@/lib/scoring";
 import { BracketView } from "./bracket-view";
+import { PageHeader } from "./page-header";
 
 export const FullBracket = ({
   initialState,
   groupId,
-  groupName,
   bracketNumber,
-  bracketName,
+  isSuperAdmin,
+  title,
+  subtitle,
+  savedResults,
 }: {
   initialState: BracketState;
   // The group whose bracket is shown; picks are saved only with one.
   groupId: string | null;
-  groupName: string | null;
   // Which of the user's brackets in the group this is.
   bracketNumber: number;
-  bracketName: string | null;
+  // The super admin's simulations are saved as the tournament's results.
+  isSuperAdmin: boolean;
+  // The page's title row, drawn here so the bracket's buttons share it.
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  // The saved actual winners, shown over the picks when the page opens.
+  savedResults: SimResults;
 }) => {
-  const canEdit = groupId !== null;
   const [state, setState] = useState(initialState);
-  // A server refresh (e.g. after copying picks in) replaces local state.
+  // A server refresh (e.g. after copying or resetting picks) replaces local
+  // state.
   const [syncedInitialState, setSyncedInitialState] = useState(initialState);
   if (initialState !== syncedInitialState) {
     setSyncedInitialState(initialState);
     setState(initialState);
   }
-  // Results shown over the picks; they live only in the browser, nothing is saved.
+  // Results shown over the picks. They live only in the browser, except that
+  // the super admin's simulated or ESPN results are also saved as every game's
+  // actual winner.
+  // The saved results, or null when no game has a result yet.
+  const saved =
+    Object.keys(savedResults).length > 0
+      ? { winners: savedResults, saved: true }
+      : null;
   const [results, setResults] = useState<{
     winners: SimResults;
     scores?: SimScores;
+    // ESPN's results, fetched live.
     actual?: boolean;
-  } | null>(null);
+    // The saved results from the database.
+    saved?: boolean;
+  } | null>(saved);
+  const simulated = results !== null && !results.actual && !results.saved;
   const [loadingActual, setLoadingActual] = useState(false);
   const [actualError, setActualError] = useState<string | null>(null);
+  // Saving or clearing the stored results (super admin only).
+  const [storing, setStoring] = useState(false);
+  const [storeStatus, setStoreStatus] = useState<string | null>(null);
+  const [storeError, setStoreError] = useState<string | null>(null);
+
+  async function storeResults(winners: SimResults | null) {
+    if (!isSuperAdmin) return;
+    setStoring(true);
+    setStoreStatus(null);
+    setStoreError(null);
+    try {
+      const response = await fetch(
+        "/api/games/results",
+        winners
+          ? {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ winners }),
+            }
+          : { method: "DELETE" },
+      );
+      const body = await response.json();
+      if (!response.ok)
+        throw new Error(body.error ?? "Could not save the results");
+      setStoreStatus(
+        winners
+          ? `Saved ${body.saved} winners as the tournament results for everyone.`
+          : "Cleared the saved tournament results.",
+      );
+    } catch (error) {
+      setStoreError(
+        error instanceof Error ? error.message : "Could not save the results",
+      );
+    } finally {
+      setStoring(false);
+    }
+  }
+  // The super admin makes no picks, so they see the results themselves.
   const shown = useMemo(
     () =>
-      results ? applyResults(state, results.winners, results.scores) : state,
-    [state, results],
+      !results
+        ? state
+        : isSuperAdmin
+          ? resultsAsBracket(state, results.winners, results.scores)
+          : applyResults(state, results.winners, results.scores),
+    [state, results, isSuperAdmin],
   );
   const score = useMemo(
-    () => (results ? scoreBracket(shown) : null),
-    [shown, results],
+    () => (results && !isSuperAdmin ? scoreBracket(shown) : null),
+    [shown, results, isSuperAdmin],
   );
-  const [confirmingReset, setConfirmingReset] = useState(false);
-  const [resetting, setResetting] = useState(false);
-  const [resetError, setResetError] = useState<string | null>(null);
-  const resetRef = useRef(false);
+  // The super admin's simulation and reset options live in a menu behind an
+  // ellipsis. Players reset a bracket's picks from the sidebar.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleClick(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    }
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [menuOpen]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const saveRef = useRef(false);
-
-  async function handleResetPicks() {
-    if (!groupId) return;
-    if (resetRef.current || saveRef.current) return;
-    resetRef.current = true;
-    setResetting(true);
-    setResetError(null);
-    try {
-      const response = await fetch(
-        `/api/games/winner?groupId=${encodeURIComponent(groupId)}&bracket=${bracketNumber}`,
-        { method: "DELETE" },
-      );
-      if (!response.ok) {
-        const body = await response.json();
-        throw new Error(body.error ?? "Could not reset picks");
-      }
-      const { state: cleanState }: { state: BracketState } =
-        await response.json();
-      setState(cleanState);
-      setSaveError(null);
-    } catch (error) {
-      setResetError(
-        error instanceof Error ? error.message : "Could not reset picks",
-      );
-    } finally {
-      resetRef.current = false;
-      setResetting(false);
-    }
-  }
 
   async function handleShowActual() {
     if (loadingActual) return;
@@ -103,6 +151,10 @@ export const FullBracket = ({
         scores: actualScores(state, actual),
         actual: true,
       });
+      // For now the super admin's ESPN results are also saved as every game's
+      // actual winner, which all users' picks are scored against. Later the
+      // results will be kept up to date automatically during the tournament.
+      storeResults(actual.winners);
     } catch (error) {
       setActualError(
         error instanceof Error ? error.message : "Could not load results",
@@ -117,7 +169,6 @@ export const FullBracket = ({
       setSaveError("Join a group to save your picks.");
       return;
     }
-    if (resetRef.current) return;
     if (match.winner?.name === team.name) return;
     if (saveRef.current) return;
     saveRef.current = true;
@@ -152,101 +203,105 @@ export const FullBracket = ({
     }
   }
 
+  // Spins the menu button while results are loading or saving.
+  const busyLabel = storing || loadingActual;
+  const menuLabel = "Simulation and reset options";
+
   return (
     <div className="w-full">
-      <div className="mb-4 flex flex-wrap justify-end gap-2">
-        <button
-          type="button"
-          aria-pressed={results !== null && !results.actual}
-          onClick={() => setResults(simulateResults(state))}
-          className="rounded-full border-2 border-gray-300 bg-white px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-gray-700 shadow-sm transition-colors hover:bg-gray-100 aria-pressed:border-gray-800 aria-pressed:bg-gray-800 aria-pressed:text-white"
-        >
-          {results && !results.actual ? "Re-simulate" : "Simulate Results"}
-        </button>
-        <button
-          type="button"
-          aria-pressed={results?.actual === true}
-          onClick={handleShowActual}
-          disabled={loadingActual}
-          className="rounded-full border-2 border-gray-300 bg-white px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-gray-700 shadow-sm transition-colors hover:bg-gray-100 disabled:cursor-wait disabled:opacity-60 aria-pressed:border-gray-800 aria-pressed:bg-gray-800 aria-pressed:text-white"
-        >
-          {loadingActual ? "Loading..." : "ESPN Results"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setResults(null);
-            setActualError(null);
-          }}
-          disabled={results === null}
-          className="rounded-full border-2 border-gray-300 bg-white px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-gray-700 shadow-sm transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
-        >
-          Reset Simulation
-        </button>
-        {/* Reset wipes the whole bracket, so it takes a second click to confirm. */}
-        {confirmingReset ? (
-          <div
-            role="group"
-            aria-label="Confirm reset"
-            className="flex items-center gap-2 rounded-full border border-red-200 bg-white py-1 pl-4 pr-1 text-sm shadow-sm"
-          >
-            <span className="text-gray-800">
-              Clear your picks in{" "}
-              <span className="font-semibold">
-                {bracketName ?? "this bracket"}
-              </span>{" "}
-              for{" "}
-              <span className="font-semibold">{groupName ?? "this group"}</span>
-              ? Your other brackets won&apos;t change.
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmingReset(false);
-                handleResetPicks();
-              }}
-              className="rounded-full bg-red-600 px-3 py-1.5 font-semibold text-white hover:bg-red-700"
-            >
-              Yes, reset
-            </button>
-            <button
-              type="button"
-              autoFocus
-              onClick={() => setConfirmingReset(false)}
-              className="rounded-full px-3 py-1.5 font-semibold text-gray-600 hover:bg-gray-100"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmingReset(true)}
-            disabled={!canEdit || resetting || saving}
-            title={canEdit ? undefined : "Join a group to make picks"}
-            className="group flex items-center gap-2 rounded-full border-2 border-ball-500 bg-white px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-ball-600 shadow-sm transition-colors hover:bg-ball-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white disabled:hover:text-ball-600"
-          >
-            <ResetIcon spinning={resetting} />
-            {resetting ? "Resetting..." : "Reset Picks"}
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title={title}
+        subtitle={subtitle}
+        actions={
+          isSuperAdmin && (
+            <div ref={menuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuOpen((value) => !value)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                aria-label={menuLabel}
+                title={menuLabel}
+                className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-gray-300 bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-100 aria-expanded:border-gray-800 aria-expanded:bg-gray-800 aria-expanded:text-white"
+              >
+                {busyLabel ? <ResetIcon spinning /> : <EllipsisIcon />}
+              </button>
+              {menuOpen && (
+                // Choosing an option closes the menu.
+                <div
+                  role="menu"
+                  onClick={() => setMenuOpen(false)}
+                  className="absolute right-0 top-full z-30 mt-2 w-60 rounded-lg border border-gray-200 bg-white p-1 text-sm shadow-lg"
+                >
+                  <MenuItem
+                    checked={simulated}
+                    disabled={storing}
+                    onSelect={() => {
+                      const simulated = simulateResults(state);
+                      setResults(simulated);
+                      storeResults(simulated.winners);
+                    }}
+                  >
+                    {simulated ? "Re-simulate" : "Simulate Results"}
+                  </MenuItem>
+                  <MenuItem
+                    checked={results?.actual === true}
+                    disabled={loadingActual}
+                    onSelect={handleShowActual}
+                  >
+                    {loadingActual ? "Loading..." : "ESPN Results"}
+                  </MenuItem>
+                  <MenuItem
+                    disabled={storing}
+                    hint="Also clears the saved tournament results"
+                    onSelect={() => {
+                      setResults(null);
+                      setActualError(null);
+                      storeResults(null);
+                    }}
+                  >
+                    Reset Simulation
+                  </MenuItem>
+                </div>
+              )}
+            </div>
+          )
+        }
+      />
       {score && (
         <ScoreSummary
           score={score}
-          label={results?.actual ? "Actual score" : "Simulated score"}
+          label={
+            results?.saved
+              ? "Your score"
+              : results?.actual
+                ? "Actual score"
+                : "Simulated score"
+          }
         />
       )}
-      {(resetError || saveError || actualError) && (
+      {(saveError || actualError || storeError) && (
         <p role="alert" className="mb-4 text-sm text-red-700">
-          {resetError ?? saveError ?? actualError}
+          {saveError ?? actualError ?? storeError}
         </p>
       )}
-      <BracketView
-        state={shown}
-        onSelectTeam={handleSelectTeam}
-        busy={saving}
-      />
+      {(storing || storeStatus) && (
+        <p role="status" className="mb-4 text-sm font-semibold text-gray-700">
+          {storing ? "Saving tournament results..." : storeStatus}
+        </p>
+      )}
+      {isSuperAdmin ? (
+        // Nothing to pick: the bracket is for viewing results.
+        <fieldset disabled className="min-w-0 [&_button]:pointer-events-none">
+          <BracketView state={shown} onSelectTeam={() => {}} />
+        </fieldset>
+      ) : (
+        <BracketView
+          state={shown}
+          onSelectTeam={handleSelectTeam}
+          busy={saving}
+        />
+      )}
     </div>
   );
 };
@@ -291,6 +346,50 @@ function ScoreSummary({
         ))}
       </dl>
     </section>
+  );
+}
+
+function MenuItem({
+  children,
+  onSelect,
+  disabled = false,
+  checked,
+  danger = false,
+  hint,
+}: {
+  children: React.ReactNode;
+  onSelect: () => void;
+  disabled?: boolean;
+  // For options that show results: whether those results are showing.
+  checked?: boolean;
+  danger?: boolean;
+  hint?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role={checked === undefined ? "menuitem" : "menuitemradio"}
+      aria-checked={checked}
+      onClick={onSelect}
+      disabled={disabled}
+      title={hint}
+      className={`flex w-full items-center gap-2 rounded px-3 py-2 text-left font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${danger ? "text-red-600 hover:bg-red-50" : "text-gray-800 hover:bg-gray-100"} disabled:hover:bg-transparent`}
+    >
+      <span className="w-4 shrink-0 text-ball-600" aria-hidden>
+        {checked ? "✓" : ""}
+      </span>
+      {children}
+    </button>
+  );
+}
+
+function EllipsisIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
+      <circle cx="5" cy="12" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="19" cy="12" r="2" />
+    </svg>
   );
 }
 

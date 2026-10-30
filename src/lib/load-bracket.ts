@@ -74,6 +74,8 @@ export async function loadBracketFromDatabase(
 ): Promise<{
   state: BracketState;
   year: number;
+  // The saved results: each decided game's winning team name, by game id.
+  results: Record<string, string>;
 }> {
   const [latestYear] = await database
     .select({ year: games.year })
@@ -101,9 +103,17 @@ export async function loadBracketFromDatabase(
           ),
         )
     : [];
+  const teamNameById = new Map(teamRows.map((team) => [team.id, team.name]));
   return {
     year: latestYear.year,
     state: buildBracket(gameRows, teamRows, pickRows),
+    results: Object.fromEntries(
+      gameRows.flatMap((game) => {
+        const winner =
+          game.actualWinnerTeamId && teamNameById.get(game.actualWinnerTeamId);
+        return winner ? [[game.gameId, winner]] : [];
+      }),
+    ),
   };
 }
 

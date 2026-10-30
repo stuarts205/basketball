@@ -1,5 +1,12 @@
 "use client";
-import { BracketState, DESKTOP_REGION_GAP, Match, Team } from "@/lib/types";
+import {
+  BRACKET_LINE_CLASS,
+  BRACKET_LINE_COLOR,
+  BracketState,
+  DESKTOP_REGION_GAP,
+  Match,
+  Team,
+} from "@/lib/types";
 import React, { useLayoutEffect, useRef, useState } from "react";
 import { RegionBracket } from "./region-bracket";
 import { ChampionCard } from "./champion-card";
@@ -118,14 +125,14 @@ export const BracketView = ({
           </div>
           <div className="relative h-8 w-full" aria-hidden="true">
             <svg
-              className="absolute inset-0 h-full w-full"
+              className={`absolute inset-0 h-full w-full ${BRACKET_LINE_CLASS}`}
               viewBox="0 0 100 32"
               preserveAspectRatio="none"
             >
               <path
                 d="M 25 0 V 16 H 50 V 32 M 75 0 V 16 H 50"
                 fill="none"
-                stroke="#b8a48a"
+                stroke={BRACKET_LINE_COLOR}
                 strokeWidth="1.75"
                 strokeLinejoin="round"
               />

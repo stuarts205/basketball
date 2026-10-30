@@ -1,4 +1,6 @@
 import {
+  BRACKET_LINE_CLASS,
+  BRACKET_LINE_COLOR,
   CARD_H,
   COL_LABEL_H,
   CONNECTOR_W,
@@ -44,7 +46,7 @@ export const FinalFourCenter = ({
   return (
     <div className="relative shrink-0" style={{ width: COL_W, height: totalH }}>
       <svg
-        className="absolute inset-0 overflow-visible pointer-events-none"
+        className={`absolute inset-0 overflow-visible pointer-events-none ${BRACKET_LINE_CLASS}`}
         width={COL_W}
         height={totalH}
         aria-hidden="true"
@@ -52,13 +54,13 @@ export const FinalFourCenter = ({
         <path
           d={`M ${leftSemifinal + FF_W} ${champCenterY} H ${championshipLeft}`}
           fill="none"
-          stroke="#b8a48a"
+          stroke={BRACKET_LINE_COLOR}
           strokeWidth={1.75}
         />
         <path
           d={`M ${rightSemifinal} ${champCenterY} H ${championshipLeft + championshipWidth}`}
           fill="none"
-          stroke="#b8a48a"
+          stroke={BRACKET_LINE_COLOR}
           strokeWidth={1.75}
         />
       </svg>

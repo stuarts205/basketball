@@ -1,13 +1,15 @@
 import { BracketState, Match } from "./types";
 
-// First Four games are not scored.
+// Points per correct pick, doubling each round (1-2-4-8-16-32), with no seed
+// bonus. A round scores correct picks x its points; the total is the sum of
+// all six rounds. First Four games are not scored.
 export const ROUND_POINTS = [
-  { name: "Round of 64", points: 10 },
-  { name: "Round of 32", points: 20 },
-  { name: "Sweet 16", points: 40 },
-  { name: "Elite 8", points: 80 },
-  { name: "Final Four", points: 160 },
-  { name: "Championship", points: 320 },
+  { name: "1st Round", points: 1 },
+  { name: "2nd Round", points: 2 },
+  { name: "Sweet 16", points: 4 },
+  { name: "Elite 8", points: 8 },
+  { name: "Final 4", points: 16 },
+  { name: "Championship Game", points: 32 },
 ] as const;
 
 export type RoundScore = {

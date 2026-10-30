@@ -2,6 +2,8 @@
 import { CopyPicksModal } from "@/components/copy-picks-modal";
 import { GroupPickerModal } from "@/components/group-picker-modal";
 import { NewBracketModal } from "@/components/new-bracket-modal";
+import { BracketConfirmModal } from "@/components/bracket-confirm-modal";
+import { ResetDataModal } from "@/components/reset-data-modal";
 import { authClient } from "@/lib/auth-client";
 import {
   BracketSummary,
@@ -72,10 +74,22 @@ export const AppSidebar = ({
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [joining, setJoining] = useState(false);
   const [addingBracket, setAddingBracket] = useState(false);
+  const [resettingData, setResettingData] = useState(false);
+  // A bracket the user asked to reset or delete, awaiting confirmation.
+  const [confirming, setConfirming] = useState<{
+    action: "reset" | "delete";
+    bracket: BracketSummary;
+  } | null>(null);
   const [copyPrompt, setCopyPrompt] = useState<SwitchedToEmptyGroup | null>(
     null,
   );
   const hiddenWhenCollapsed = collapsed ? "lg:hidden" : "";
+  // The super admin has no bracket of their own: theirs shows the results.
+  const navItems = isSuperAdmin
+    ? NAV_ITEMS.map((item) =>
+        item.href === "/bracket" ? { ...item, label: "Bracket" } : item,
+      )
+    : NAV_ITEMS;
 
   function toggleCollapsed() {
     const next = !collapsed;
@@ -138,7 +152,7 @@ export const AppSidebar = ({
         <nav
           className={`flex flex-col gap-1 border-b border-white/15 px-3 py-4 ${hiddenWhenCollapsed}`}
         >
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          {navItems.map(({ href, label, icon: Icon }) => {
             const active = isActivePath(pathname, href);
             const link = (
               <Link
@@ -152,7 +166,8 @@ export const AppSidebar = ({
                 {label}
               </Link>
             );
-            if (href !== "/bracket" || !activeGroup) return link;
+            if (href !== "/bracket" || !activeGroup || isSuperAdmin)
+              return link;
             const full = brackets.length >= MAX_BRACKETS;
             return (
               <div key={href} className="flex flex-col gap-1">
@@ -182,12 +197,15 @@ export const AppSidebar = ({
                       const current =
                         active && bracket.number === activeBracketNumber;
                       return (
-                        <li key={bracket.number}>
+                        <li
+                          key={bracket.number}
+                          className="relative flex items-center gap-1"
+                        >
                           <Link
                             href={`/bracket?b=${bracket.number}`}
                             onClick={() => setOpen(false)}
                             aria-current={current ? "page" : undefined}
-                            className={`flex items-center gap-2 rounded px-3 py-1.5 text-sm ${current ? "bg-white/10 font-semibold text-white" : "text-white/60 hover:bg-white/10 hover:text-white"}`}
+                            className={`flex min-w-0 flex-1 items-center gap-2 rounded px-3 py-1.5 text-sm ${current ? "bg-white/10 font-semibold text-white" : "text-white/60 hover:bg-white/10 hover:text-white"}`}
                           >
                             <span
                               aria-hidden
@@ -197,6 +215,13 @@ export const AppSidebar = ({
                               {bracket.name}
                             </span>
                           </Link>
+                          <BracketMenu
+                            name={bracket.name}
+                            onChoose={(action) => {
+                              setOpen(false);
+                              setConfirming({ action, bracket });
+                            }}
+                          />
                         </li>
                       );
                     })}
@@ -210,7 +235,7 @@ export const AppSidebar = ({
         {/* Collapsed on desktop: just the icons, with names on hover. */}
         {collapsed && (
           <nav className="mt-3 hidden flex-col items-center gap-1 border-t border-white/15 pt-3 lg:flex">
-            {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+            {navItems.map(({ href, label, icon: Icon }) => {
               const active = isActivePath(pathname, href);
               return (
                 <div key={href} className="flex flex-col items-center gap-1">
@@ -262,6 +287,10 @@ export const AppSidebar = ({
               setOpen(false);
               setCopyPrompt(prompt);
             }}
+            onResetData={() => {
+              setOpen(false);
+              setResettingData(true);
+            }}
           />
         </div>
       </aside>
@@ -274,6 +303,18 @@ export const AppSidebar = ({
           userGroups={groups}
           activeGroupId={activeGroupId}
           onClose={() => setJoining(false)}
+        />
+      )}
+      {confirming && activeGroup && (
+        <BracketConfirmModal
+          action={confirming.action}
+          groupId={activeGroup.id}
+          groupName={activeGroup.name}
+          bracket={confirming.bracket}
+          viewingNumber={
+            isActivePath(pathname, "/bracket") ? activeBracketNumber : null
+          }
+          onClose={() => setConfirming(null)}
         />
       )}
       {addingBracket && activeGroup && (
@@ -297,6 +338,9 @@ export const AppSidebar = ({
           onClose={() => setCopyPrompt(null)}
         />
       )}
+      {resettingData && (
+        <ResetDataModal onClose={() => setResettingData(false)} />
+      )}
     </>
   );
 };
@@ -316,6 +360,7 @@ const UserMenu = ({
   activeGroupId,
   onJoinGroup,
   onSwitchedToEmptyGroup,
+  onResetData,
 }: {
   // In the collapsed desktop sidebar: only the avatar shows, and the menu
   // opens to its right.
@@ -330,6 +375,8 @@ const UserMenu = ({
   // Called when the user has no picks in the group they switched to but has
   // a bracket in another group they could copy.
   onSwitchedToEmptyGroup: (prompt: SwitchedToEmptyGroup) => void;
+  // Super admin only: asks to wipe every team, game, group, bracket and pick.
+  onResetData: () => void;
 }) => {
   const router = useRouter();
   const settingsActive = isActivePath(usePathname(), "/settings");
@@ -470,6 +517,21 @@ const UserMenu = ({
               {settingsActive && <CheckIcon />}
             </Link>
           )}
+          {isSuperAdmin && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onResetData();
+              }}
+              disabled={busy}
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm font-semibold text-red-300 hover:bg-white/10 disabled:opacity-50"
+            >
+              <TrashIcon />
+              Reset all data
+            </button>
+          )}
           <button
             type="button"
             role="menuitem"
@@ -532,6 +594,109 @@ function SidebarIcon() {
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <path d="M9 4v16" />
+    </svg>
+  );
+}
+
+// The options next to one of the user's brackets: reset its picks or delete
+// it. Each is confirmed in a popup before anything changes.
+function BracketMenu({
+  name,
+  onChoose,
+}: {
+  name: string;
+  onChoose: (action: "reset" | "delete") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  const choose = (action: "reset" | "delete") => {
+    setOpen(false);
+    onChoose(action);
+  };
+
+  return (
+    <div ref={menuRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Options for ${name}`}
+        title={`Options for ${name}`}
+        className="rounded p-1.5 text-white/40 hover:bg-white/10 hover:text-white aria-expanded:bg-white/10 aria-expanded:text-white"
+      >
+        <EllipsisIcon />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-white/15 bg-sideline-800 p-1 text-sm shadow-lg"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => choose("reset")}
+            className="flex w-full items-center gap-2 rounded px-3 py-2 text-left font-semibold text-white/90 hover:bg-white/10"
+          >
+            <ResetIcon />
+            Reset picks
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => choose("delete")}
+            className="flex w-full items-center gap-2 rounded px-3 py-2 text-left font-semibold text-red-300 hover:bg-red-500/15"
+          >
+            <TrashIcon />
+            Delete bracket
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EllipsisIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor" aria-hidden>
+      <circle cx="5" cy="12" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="19" cy="12" r="2" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
+      <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />
+    </svg>
+  );
+}
+
+// A circular arrow, for resetting a bracket's picks.
+function ResetIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <path d="M3 3v5h5" />
     </svg>
   );
 }

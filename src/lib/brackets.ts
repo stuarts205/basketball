@@ -1,6 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { brackets, user } from "@/db/schema";
+import { brackets, picks, user } from "@/db/schema";
 import { findUserGroup } from "@/lib/groups";
 import {
   BracketSummary,
@@ -56,6 +56,51 @@ export async function hasBracket(
   return (await listBrackets(userId, groupId, database)).some(
     (bracket) => bracket.number === number,
   );
+}
+
+// Deletes one of the user's brackets in the group with all its picks.
+// Brackets after it move up a number, keeping their names and picks, so the
+// first bracket is always number 1. Deleting the only bracket leaves the
+// user with an unnamed, empty first bracket.
+export async function deleteBracket(
+  userId: string,
+  groupId: string,
+  number: number,
+  database: Pick<typeof db, "transaction"> = db,
+): Promise<"deleted" | "not-member" | "not-found"> {
+  return database.transaction(async (tx) => {
+    // Serialize with the user's other bracket and pick edits.
+    await tx
+      .select({ id: user.id })
+      .from(user)
+      .where(eq(user.id, userId))
+      .for("update");
+    if (!(await findUserGroup(userId, groupId, tx))) return "not-member";
+    if (!(await hasBracket(userId, groupId, number, tx))) return "not-found";
+    const ownPicks = and(eq(picks.userId, userId), eq(picks.groupId, groupId));
+    const ownBrackets = and(
+      eq(brackets.userId, userId),
+      eq(brackets.groupId, groupId),
+    );
+    await tx
+      .delete(picks)
+      .where(and(ownPicks, eq(picks.bracketNumber, number)));
+    await tx
+      .delete(brackets)
+      .where(and(ownBrackets, eq(brackets.number, number)));
+    // One number at a time, lowest first, so no two brackets ever share one.
+    for (let next = number + 1; next <= MAX_BRACKETS; next++) {
+      await tx
+        .update(picks)
+        .set({ bracketNumber: next - 1 })
+        .where(and(ownPicks, eq(picks.bracketNumber, next)));
+      await tx
+        .update(brackets)
+        .set({ number: next - 1 })
+        .where(and(ownBrackets, eq(brackets.number, next)));
+    }
+    return "deleted";
+  });
 }
 
 // Whether the user has named any bracket in the group yet.
