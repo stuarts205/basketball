@@ -60,12 +60,24 @@ export function bracketMatches(state: BracketState): Match[] {
   ];
 }
 
+// A user keeps up to three separate brackets in every group they belong to.
+// Without bracketNumber this is their first bracket.
+export type PickOwner = {
+  userId: string;
+  groupId: string;
+  bracketNumber?: number;
+};
+
 export async function loadBracketFromDatabase(
-  userId?: string,
+  owner?: PickOwner,
   database: Pick<typeof db, "select"> = db,
 ): Promise<{
   state: BracketState;
   year: number;
+  // The saved results: each decided game's winning team name, by game id.
+  results: Record<string, string>;
+  // The saved final scores by game id, in the order of the teams that played.
+  scores: Record<string, [number, number]>;
 }> {
   const [latestYear] = await database
     .select({ year: games.year })
@@ -79,16 +91,38 @@ export async function loadBracketFromDatabase(
     database.select().from(games).where(eq(games.year, latestYear.year)),
     database.select().from(teams),
   ]);
-  const pickRows = userId
+  const pickRows = owner
     ? await database
         .select({ gameId: picks.gameId, winnerTeamId: picks.winnerTeamId })
         .from(picks)
         .innerJoin(games, eq(picks.gameId, games.id))
-        .where(and(eq(picks.userId, userId), eq(games.year, latestYear.year)))
+        .where(
+          and(
+            eq(picks.userId, owner.userId),
+            eq(picks.groupId, owner.groupId),
+            eq(picks.bracketNumber, owner.bracketNumber ?? 1),
+            eq(games.year, latestYear.year),
+          ),
+        )
     : [];
+  const teamNameById = new Map(teamRows.map((team) => [team.id, team.name]));
   return {
     year: latestYear.year,
     state: buildBracket(gameRows, teamRows, pickRows),
+    results: Object.fromEntries(
+      gameRows.flatMap((game) => {
+        const winner =
+          game.actualWinnerTeamId && teamNameById.get(game.actualWinnerTeamId);
+        return winner ? [[game.gameId, winner]] : [];
+      }),
+    ),
+    scores: Object.fromEntries(
+      gameRows.flatMap((game) =>
+        game.actualScore1 !== null && game.actualScore2 !== null
+          ? [[game.gameId, [game.actualScore1, game.actualScore2]]]
+          : [],
+      ),
+    ),
   };
 }
 

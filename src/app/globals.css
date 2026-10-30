@@ -12,6 +12,63 @@
   --font-mono: var(--font-geist-mono);
 }
 
+@theme {
+  /* Basketball leather orange */
+  --color-ball-300: #fdba8c;
+  --color-ball-400: #f98a45;
+  --color-ball-500: #ee6a1f;
+  --color-ball-600: #d4560f;
+  --color-ball-700: #ad4410;
+
+  /* Maple hardwood court */
+  --color-court-50: #fbf5ea;
+  --color-court-100: #f3e4c8;
+  --color-court-200: #e6cfa4;
+
+  /* Sideline black, used for the sidebar */
+  --color-sideline-800: #2a2320;
+  --color-sideline-900: #1c1715;
+
+  /* Warm grays so neutrals sit well on the hardwood */
+  --color-gray-50: oklch(98.5% 0.001 106.423);
+  --color-gray-100: oklch(97% 0.001 106.424);
+  --color-gray-200: oklch(92.3% 0.003 48.717);
+  --color-gray-300: oklch(86.9% 0.005 56.366);
+  --color-gray-400: oklch(70.9% 0.01 56.259);
+  --color-gray-500: oklch(55.3% 0.013 58.071);
+  --color-gray-600: oklch(44.4% 0.011 73.639);
+  --color-gray-700: oklch(37.4% 0.01 67.558);
+  --color-gray-800: oklch(26.8% 0.007 34.298);
+  --color-gray-900: oklch(21.6% 0.006 56.043);
+}
+
+/* A full court (94 x 50 ft, 10 units per foot) seen from above: boundary,
+   half-court line and center circle, and at each end the key, free-throw
+   circle, three-point line, restricted area and backboard. The right end is
+   the left end mirrored. Faint so the bracket stays readable. */
+@utility bg-court {
+  --court-markings: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 940 500' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3Cg id='end'%3E%3Crect x='0' y='170' width='190' height='160' fill='rgb(238 106 31 / 0.07)'/%3E%3Cpath d='M0 170H190V330H0M190 190A60 60 0 0 1 190 310A60 60 0 0 1 190 190M0 30H142A237.5 237.5 0 0 1 142 470H0M52.5 210A40 40 0 0 1 52.5 290M40 220V280'/%3E%3C/g%3E%3C/defs%3E%3Cg fill='none' stroke='rgb(110 62 22 / 0.3)' stroke-width='3'%3E%3Crect x='4' y='4' width='932' height='492'/%3E%3Cpath d='M470 4V496'/%3E%3Ccircle cx='470' cy='250' r='60' fill='rgb(238 106 31 / 0.07)'/%3E%3Ccircle cx='470' cy='250' r='20'/%3E%3Cuse href='%23end'/%3E%3Cuse href='%23end' transform='matrix(-1 0 0 1 940 0)'/%3E%3C/g%3E%3C/svg%3E");
+
+  --court-parquet: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect x='0' y='0' width='60' height='12' fill='rgb(234 204 152)'/%3E%3Crect x='0' y='12' width='60' height='12' fill='rgb(226 193 139)'/%3E%3Crect x='0' y='24' width='60' height='12' fill='rgb(239 212 163)'/%3E%3Crect x='0' y='36' width='60' height='12' fill='rgb(222 186 131)'/%3E%3Crect x='0' y='48' width='60' height='12' fill='rgb(231 199 147)'/%3E%3Crect x='60' y='0' width='12' height='60' fill='rgb(239 212 163)'/%3E%3Crect x='72' y='0' width='12' height='60' fill='rgb(222 186 131)'/%3E%3Crect x='84' y='0' width='12' height='60' fill='rgb(231 199 147)'/%3E%3Crect x='96' y='0' width='12' height='60' fill='rgb(236 207 157)'/%3E%3Crect x='108' y='0' width='12' height='60' fill='rgb(234 204 152)'/%3E%3Crect x='0' y='60' width='12' height='60' fill='rgb(222 186 131)'/%3E%3Crect x='12' y='60' width='12' height='60' fill='rgb(231 199 147)'/%3E%3Crect x='24' y='60' width='12' height='60' fill='rgb(236 207 157)'/%3E%3Crect x='36' y='60' width='12' height='60' fill='rgb(234 204 152)'/%3E%3Crect x='48' y='60' width='12' height='60' fill='rgb(226 193 139)'/%3E%3Crect x='60' y='60' width='60' height='12' fill='rgb(236 207 157)'/%3E%3Crect x='60' y='72' width='60' height='12' fill='rgb(234 204 152)'/%3E%3Crect x='60' y='84' width='60' height='12' fill='rgb(226 193 139)'/%3E%3Crect x='60' y='96' width='60' height='12' fill='rgb(239 212 163)'/%3E%3Crect x='60' y='108' width='60' height='12' fill='rgb(222 186 131)'/%3E%3Cpath d='M0 12.5h60M0 24.5h60M0 36.5h60M0 48.5h60M72.5 0v60M84.5 0v60M96.5 0v60M108.5 0v60M12.5 60v60M24.5 60v60M36.5 60v60M48.5 60v60M60 72.5h60M60 84.5h60M60 96.5h60M60 108.5h60' stroke='rgb(140 92 44 / 0.28)' stroke-width='1'/%3E%3Cpath d='M0 0.5H120M0 60.5H120M0.5 0V120M60.5 0V120' stroke='rgb(120 76 34 / 0.4)' stroke-width='1'/%3E%3C/svg%3E");
+
+  background-color: var(--color-court-100);
+  background-image:
+    var(--court-markings),
+    /* Gloss from the arena lights */
+    radial-gradient(
+      ellipse at 50% 40%,
+      rgb(255 255 255 / 0.3),
+      transparent 70%
+    ),
+    /* Parquet like the old Boston Garden: squares of five planks, turning
+       90 degrees from one square to the next */
+    var(--court-parquet);
+  background-size: cover, auto, auto;
+  background-position: center;
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-attachment: fixed;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;

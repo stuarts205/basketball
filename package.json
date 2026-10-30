@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test:picks": "tsx --test src/app/api/games/winner/route.test.ts",
-    "db:seed": "tsx src/db/import-tournament.ts"
+    "db:seed": "tsx src/db/import-tournament.ts",
+    "db:migrate-group-picks": "tsx src/db/migrate-group-picks.ts",
+    "db:migrate-brackets": "tsx src/db/migrate-brackets.ts"
   },
   "dependencies": {
     "better-auth": "^1.7.13",

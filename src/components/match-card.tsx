@@ -3,6 +3,65 @@ import Image from "next/image";
 import React from "react";
 import { getTeamLogoUrl } from "@/lib/team-logos";
 
+// A game with a result can't be picked any more.
+export function isFinished(match: Match) {
+  return match.status === "final" || match.actualWinner != null;
+}
+
+export function pickedCorrectly(match: Match) {
+  return (
+    match.winner != null &&
+    match.actualWinner != null &&
+    match.winner.name === match.actualWinner.name
+  );
+}
+
+// What to show for one of a game's two team slots: the user's pick, the
+// team that actually played there, and how the pick turned out.
+export function slotInfo(match: Match, i: number) {
+  const team = match.teams[i];
+  const pendingTeams = !team ? match.pendingTeams?.[i as 0 | 1] : undefined;
+  const teamName =
+    team?.name ??
+    pendingTeams?.map((candidate) => candidate.name).join("/") ??
+    "";
+  // A team the user advanced here that was knocked out in an earlier game.
+  const actualTeam = match.actualTeams?.[i];
+  const isEliminated =
+    team != null && actualTeam != null && actualTeam.name !== team.name;
+  // Show the team that actually advanced, keeping the user's pick as a note.
+  const shownTeam = isEliminated ? actualTeam : team;
+  const shownName = isEliminated ? actualTeam.name : teamName;
+  const isWinner = team != null && match.winner?.name === team.name;
+  const isActualWinner =
+    shownTeam != null && match.actualWinner?.name === shownTeam.name;
+  const isCorrectPick = isWinner && isActualWinner;
+  const isMissedPick =
+    isWinner &&
+    match.actualWinner != null &&
+    match.actualWinner.name !== team.name;
+  const logoUrl = shownTeam
+    ? shownTeam.logo || getTeamLogoUrl(shownTeam.name)
+    : undefined;
+  return {
+    team,
+    pendingTeams,
+    teamName,
+    isEliminated,
+    shownTeam,
+    shownName,
+    isWinner,
+    isActualWinner,
+    isCorrectPick,
+    isStruck: isMissedPick || isEliminated,
+    // Bold for the team that won: the real winner once there is one,
+    // otherwise the user's pick.
+    isLeading: match.actualWinner ? isActualWinner : isWinner,
+    score: match.score[i],
+    logoUrl,
+  };
+}
+
 export const MatchCard = ({
   match,
   onSelectTeam,
@@ -12,9 +71,10 @@ export const MatchCard = ({
   onSelectTeam: (match: Match, team: Team) => void;
   width?: number | string;
 }) => {
+  const finished = isFinished(match);
   return (
     <div
-      className="pointer-events-auto shrink-0 flex flex-col justify-center bg-white rounded-lg shadow-md overflow-hidden"
+      className={`pointer-events-auto shrink-0 flex flex-col justify-center bg-white rounded-lg shadow-md overflow-hidden ${pickedCorrectly(match) ? "ring-2 ring-green-600" : ""}`}
       style={{ width, height: CARD_H }}
     >
       {match.actualWinner && (
@@ -23,15 +83,8 @@ export const MatchCard = ({
           style={{ height: CARD_H - ROW_H * 2 - 2 }}
         >
           <span className="min-w-0 truncate text-gray-500">
-            Sim: {match.actualWinner.name}
+            Winner: {match.actualWinner.name}
           </span>
-          {match.winner && (
-            <span
-              className={`shrink-0 font-bold ${match.winner.name === match.actualWinner.name ? "text-green-700" : "text-red-600"}`}
-            >
-              {match.winner.name === match.actualWinner.name ? "OK" : "MISS"}
-            </span>
-          )}
         </div>
       )}
       {/* <div
@@ -44,56 +97,50 @@ export const MatchCard = ({
             ? "Live"
             : ""}
       </div> */}
-      {match.teams.map((team, i) => {
-        const pendingTeams = !team
-          ? match.pendingTeams?.[i as 0 | 1]
-          : undefined;
-        const teamName =
-          team?.name ??
-          pendingTeams?.map((candidate) => candidate.name).join("/") ??
-          "";
-        const isWinner = team != null && match.winner?.name === team.name;
-        const isActualWinner =
-          team != null && match.actualWinner?.name === team.name;
-        const isActualLoser =
-          team != null &&
-          match.actualWinner != null &&
-          match.actualTeams?.some(
-            (actualTeam) => actualTeam?.name === team.name,
-          ) &&
-          !isActualWinner;
-        const isMissedPick =
-          isWinner && match.actualWinner != null && !isActualWinner;
-        const score = match.score[i];
-        const logoUrl = team
-          ? team.logo || getTeamLogoUrl(team.name)
-          : undefined;
+      {match.teams.map((_, i) => {
+        const {
+          team,
+          pendingTeams,
+          teamName,
+          isEliminated,
+          shownTeam,
+          shownName,
+          isWinner,
+          isCorrectPick,
+          isStruck,
+          isLeading,
+          score,
+          logoUrl,
+        } = slotInfo(match, i);
         return (
           <button
             key={i}
-            title={teamName || undefined}
-            onClick={() => team && onSelectTeam(match, team)}
-            disabled={!team}
+            title={
+              isEliminated
+                ? `${shownName} (your pick: ${teamName})`
+                : teamName || undefined
+            }
+            onClick={() => team && !finished && onSelectTeam(match, team)}
+            disabled={!team || finished}
             style={{ height: ROW_H, width: "100%" }}
             className={[
               "flex items-center gap-2 px-3 text-left transition-colors",
               i > 0 ? "border-t border-gray-100" : "",
-              isMissedPick
-                ? "font-bold text-red-700"
-                : isActualWinner
-                  ? "font-bold text-green-800"
-                  : isWinner
+              isCorrectPick
+                ? "font-bold text-green-700"
+                : isWinner
                     ? "font-bold text-gray-900"
                     : "text-gray-400",
-              isActualLoser ? "opacity-60" : "",
-              team && !isWinner ? "hover:bg-gray-50 cursor-pointer" : "",
-              !team ? "cursor-default" : "",
+              team && !isWinner && !finished
+                ? "hover:bg-gray-50 cursor-pointer"
+                : "",
+              !team || finished ? "cursor-default" : "",
             ].join(" ")}
           >
             <span
               className={`text-[11px] w-4 shrink-0 ${isWinner ? "text-gray-500" : "text-gray-300"}`}
             >
-              {team?.seed ?? pendingTeams?.[0]?.seed ?? ""}
+              {shownTeam?.seed ?? pendingTeams?.[0]?.seed ?? ""}
             </span>
             {logoUrl && (
               <Image
@@ -105,21 +152,35 @@ export const MatchCard = ({
               />
             )}
             <span
-              className={`min-w-0 flex-1 ${pendingTeams ? "text-[10px] leading-3 whitespace-normal break-words text-gray-500" : "truncate text-sm"} ${isActualLoser ? "line-through" : ""}`}
+              className={`min-w-0 flex-1 ${pendingTeams ? "text-[10px] leading-3 whitespace-normal break-words text-gray-500" : "truncate text-sm"}`}
             >
-              {teamName}
+              {shownName}
+              {isEliminated && (
+                <span className="ml-1 text-[9px] font-normal text-red-400 line-through">
+                  {teamName}
+                </span>
+              )}
             </span>
-            {isWinner && match.actualWinner && (
+            {isStruck ? (
               <span
-                aria-label={isMissedPick ? "Pick missed" : "Correct pick"}
-                className={`shrink-0 text-sm font-bold ${isMissedPick ? "text-red-600" : "text-green-600"}`}
+                aria-label="Pick missed"
+                className="shrink-0 text-sm font-bold text-red-600"
               >
-                {isMissedPick ? "×" : "✓"}
+                ✕
               </span>
+            ) : (
+              isCorrectPick && (
+                <span
+                  aria-label="Correct pick"
+                  className="shrink-0 text-sm font-bold text-green-600"
+                >
+                  ✓
+                </span>
+              )
             )}
             {score != null && (
               <span
-                className={`text-sm tabular-nums ${isWinner ? "text-gray-900" : "text-gray-400"}`}
+                className={`shrink-0 text-sm tabular-nums ${isLeading ? "font-bold text-gray-900" : "font-normal text-gray-400"}`}
               >
                 {score}
               </span>

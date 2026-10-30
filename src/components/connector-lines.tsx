@@ -1,6 +1,8 @@
 import React from "react";
 import { roundLayout } from "@/lib/utils";
 import {
+  BRACKET_LINE_CLASS,
+  BRACKET_LINE_COLOR,
   CARD_H,
   CARD_W,
   COL_LABEL_H,
@@ -45,14 +47,14 @@ export const ConnectorLines = ({
         <path
           d={`M ${sourceX} ${yA} H ${xMid} V ${yDest} H ${destinationX}`}
           fill="none"
-          stroke="#9ca3af"
+          stroke={BRACKET_LINE_COLOR}
           strokeWidth={1.75}
           strokeLinejoin="round"
         />
         <path
           d={`M ${sourceX} ${yB} H ${xMid} V ${yDest} H ${destinationX}`}
           fill="none"
-          stroke="#9ca3af"
+          stroke={BRACKET_LINE_COLOR}
           strokeWidth={1.75}
           strokeLinejoin="round"
         />
@@ -63,7 +65,7 @@ export const ConnectorLines = ({
     <svg
       width={connectorWidth}
       height={svgH}
-      className="shrink-0 self-start overflow-visible"
+      className={`shrink-0 self-start overflow-visible ${BRACKET_LINE_CLASS}`}
     >
       <g
         transform={

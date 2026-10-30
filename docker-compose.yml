@@ -1,0 +1,82 @@
+# Self-hosted setup (e.g. Raspberry Pi, 64-bit OS): Caddy -> Next.js app -> Postgres.
+#
+# .env next to this file must define:
+#   DOMAIN=bracket.example.com            # Caddy gets a Let's Encrypt cert for this
+#   BETTER_AUTH_URL=https://bracket.example.com
+#   BETTER_AUTH_SECRET=...
+#   POSTGRES_PASSWORD=...
+#
+# Start:             docker compose up -d --build
+# Schema (drizzle):  docker compose run --rm tools npx drizzle-kit push
+# Seed:              docker compose run --rm tools npm run db:seed
+#
+# Or cross-build on your PC and push, then set `image:` on app below:
+#   docker buildx build --platform linux/arm64 -t youruser/basketball:latest --push .
+
+x-database-url: &database-url
+  DATABASE_URL: postgres://basketball:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/basketball
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+  app:
+    build: .
+    # image: youruser/basketball:latest
+    restart: unless-stopped
+    # No published port: only reachable through Caddy.
+    expose:
+      - "3000"
+    environment:
+      <<: *database-url
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: basketball
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: basketball
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U basketball -d basketball"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-off container with dev dependencies (drizzle-kit, tsx) for schema
+  # pushes and seeding. Never started by `up`; use `docker compose run`.
+  tools:
+    build:
+      context: .
+      target: builder
+    profiles: ["tools"]
+    environment:
+      <<: *database-url
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

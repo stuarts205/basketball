@@ -11,6 +11,7 @@ export const AuthForm = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,6 +20,10 @@ export const AuthForm = () => {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
+    if (isSignUp && password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -41,6 +46,10 @@ export const AuthForm = () => {
 
   function toggleMode() {
     setMode(isSignUp ? "sign-in" : "sign-up");
+    setName("");
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
     setError(null);
   }
 
@@ -64,7 +73,7 @@ export const AuthForm = () => {
               autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-gray-500 focus:outline-none"
+              className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-ball-500 focus:outline-none focus:ring-2 focus:ring-ball-500/20"
             />
           </label>
         )}
@@ -76,7 +85,7 @@ export const AuthForm = () => {
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-gray-500 focus:outline-none"
+            className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-ball-500 focus:outline-none focus:ring-2 focus:ring-ball-500/20"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm font-semibold text-gray-700">
@@ -88,9 +97,23 @@ export const AuthForm = () => {
             autoComplete={isSignUp ? "new-password" : "current-password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-gray-500 focus:outline-none"
+            className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-ball-500 focus:outline-none focus:ring-2 focus:ring-ball-500/20"
           />
         </label>
+        {isSignUp && (
+          <label className="flex flex-col gap-1 text-sm font-semibold text-gray-700">
+            Confirm password
+            <input
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="rounded border border-gray-300 px-3 py-2 font-normal text-gray-800 focus:border-ball-500 focus:outline-none focus:ring-2 focus:ring-ball-500/20"
+            />
+          </label>
+        )}
         {error && (
           <p role="alert" className="text-sm text-red-700">
             {error}
@@ -99,7 +122,7 @@ export const AuthForm = () => {
         <button
           type="submit"
           disabled={submitting}
-          className="rounded bg-gray-800 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-700 disabled:cursor-wait disabled:opacity-50"
+          className="rounded bg-ball-500 px-3 py-2 text-sm font-semibold text-white hover:bg-ball-600 disabled:cursor-wait disabled:opacity-50"
         >
           {submitting
             ? isSignUp
@@ -115,7 +138,7 @@ export const AuthForm = () => {
         <button
           type="button"
           onClick={toggleMode}
-          className="font-semibold text-gray-800 underline hover:text-gray-600"
+          className="font-semibold text-gray-800 underline hover:text-gray-600 cursor-pointer"
         >
           {isSignUp ? "Sign in" : "Sign up"}
         </button>

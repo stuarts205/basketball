@@ -10,7 +10,7 @@ export default async function Page() {
   if (session) redirect("/bracket");
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100 p-6">
+    <div className="flex min-h-screen items-center justify-center bg-court p-6">
       <AuthForm />
     </div>
   );
