@@ -1,7 +1,14 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { games, picks, teams } from "@/db/schema";
-import { BracketState, FirstFourMatch, Match, Region, Team } from "@/lib/types";
+import {
+  BracketState,
+  FirstFourMatch,
+  Match,
+  OPENING_ROUND,
+  Region,
+  Team,
+} from "@/lib/types";
 
 const regionOrder = ["East", "South", "West", "Midwest"];
 const roundOrder = ["First Round", "Second Round", "Sweet 16", "Elite 8"];
@@ -31,7 +38,7 @@ function toMatch(
   return {
     id: game.gameId,
     teams:
-      game.round === "First Round" || game.round === "First Four"
+      game.round === "First Round" || game.round === OPENING_ROUND
         ? [toTeam(game.team1Id, teamById), toTeam(game.team2Id, teamById)]
         : [null, null],
     winner: toTeam(winnerByGameId.get(game.id) ?? null, teamById),
@@ -139,13 +146,13 @@ export function buildBracket(
     a.gameId.localeCompare(b.gameId, undefined, { numeric: true }),
   );
   const firstFour: FirstFourMatch[] = sortedGames
-    .filter((game) => game.round === "First Four")
+    .filter((game) => game.round === OPENING_ROUND)
     .map((game) => {
       const match = toMatch(game, teamById, winnerByGameId);
       validateWinner(match);
       const seed = match.teams[0]?.seed;
       if (!seed || !game.region || match.teams[1]?.seed !== seed) {
-        throw new Error(`Invalid First Four game ${game.gameId}`);
+        throw new Error(`Invalid Opening Round game ${game.gameId}`);
       }
       const target = sortedGames.find(
         (candidate) =>
@@ -156,7 +163,7 @@ export function buildBracket(
           ),
       );
       if (!target)
-        throw new Error(`Missing First Four destination for ${game.gameId}`);
+        throw new Error(`Missing Opening Round destination for ${game.gameId}`);
       const nextSlot: 0 | 1 =
         target.team1Id && teamById.get(target.team1Id)?.seed === 17 - seed
           ? 1

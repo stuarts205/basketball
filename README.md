@@ -2,9 +2,12 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Tournament Data
 
-The database importer uses the 2025-26 men's NCAA tournament bracket, including
-all 68 teams and 67 games. Only First Four and First Round participants are imported;
-later rounds start empty. First Round slots fed by the First Four are left empty.
+The database importer uses the 2026-27 men's NCAA tournament field: 76 teams and
+75 games. Starting in 2027 the First Four is replaced by a 12-game Opening Round
+(24 teams): the 12 lowest-seeded automatic qualifiers and the last 12 at-large
+teams. Its winners join the 52 teams already in the 64-team bracket. Only Opening
+Round and First Round participants are imported; later rounds start empty. First
+Round slots fed by the Opening Round are left empty.
 Set `DATABASE_URL` in `.env` first.
 
 ```bash
@@ -15,13 +18,18 @@ npm run db:seed -- --replace
 `--replace` deletes existing games and teams, including all users' saved picks,
 and imports the verified tournament in one transaction. Without `--replace`, the
 importer updates shared matchup data while preserving user picks in the separate
-`picks` table. First Four entrants are derived per user, never written into shared
-games. Validation failures roll back database changes.
-The source snapshot is saved in `data/tournament-2026.json`; add `--refresh` to
-fetch it again from ESPN. The older `data/data.json` file is sample data and is not
-used by this importer. First Four games appear below the main bracket; choosing a
-winner fills the corresponding First Round slot. Changing that pick removes the
-previous entrant from subsequent local picks.
+`picks` table. Opening Round entrants are derived per user, never written into
+shared games. Validation failures roll back database changes.
+
+The field is in `data/tournament-2027.json`: each region lists seeds 1 to 16, and
+a seed with two teams is an Opening Round game. Teams are named by their
+`location` in `data/teams.json`. Until Selection Sunday it holds the CBS Sports
+preseason projection (`"projected": true`); replace it with the real field, then
+re-import. The 2025-26 snapshot remains in `data/tournament-2026.json`, and
+`data/data.json` is sample data; neither is used by this importer. Opening Round
+games appear above the main bracket; choosing a winner fills the corresponding
+First Round slot. Changing that pick removes the previous entrant from
+subsequent local picks.
 
 The bracket starts with First Round teams populated and does not display official
 results. Each pick is stored in `picks` with a text `user_id`, a UUID `game_id`

@@ -27,7 +27,7 @@ export type Tournament = {
 };
 
 export const regionOrder = ["East", "South", "West", "Midwest"];
-const roundCodes = ["first-four", "r64", "r32", "s16", "e8"];
+const roundCodes = ["opening-round", "r64", "r32", "s16", "e8"];
 
 export function regionFor(bracket: Tournament, game: Matchup): string | null {
   if (game.roundId >= 5) return null;
@@ -36,7 +36,7 @@ export function regionFor(bracket: Tournament, game: Matchup): string | null {
       (region) => region.id === game.regionId,
     )?.slug;
     const region = regionOrder.find((name) => name.toLowerCase() === slug);
-    if (!region) throw new Error(`Unknown First Four region: ${game.regionId}`);
+    if (!region) throw new Error(`Unknown Opening Round region: ${game.regionId}`);
     return region;
   }
   return regionOrder[
@@ -46,7 +46,7 @@ export function regionFor(bracket: Tournament, game: Matchup): string | null {
 
 // Our games.game_id for a source matchup.
 export function gameIdFor(bracket: Tournament, game: Matchup): string {
-  if (game.roundId === 0) return `first-four-${game.bracketLocation}`;
+  if (game.roundId === 0) return `opening-round-${game.bracketLocation}`;
   if (game.roundId === 5) return `ff-${game.bracketLocation}`;
   if (game.roundId === 6) return "championship";
   const region = regionFor(bracket, game)!;

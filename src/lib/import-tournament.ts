@@ -1,50 +1,53 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { games, teams } from "../db/schema";
-import {
-  Competitor,
-  Matchup,
-  Tournament,
-  gameIdFor,
-  regionFor as sourceRegionFor,
-} from "./bracket-source";
+import { Tournament } from "./bracket-source";
+import { OPENING_ROUND } from "./types";
 
-export const TOURNAMENT_YEAR = 2026;
+export const TOURNAMENT_YEAR = 2027;
+const season = "2026-27";
 const sourceUrl = `https://www.espn.com/mens-college-basketball/bracket/_/season/${TOURNAMENT_YEAR}`;
 const dataDir = path.join(process.cwd(), "data");
-const snapshot = path.join(dataDir, `tournament-${TOURNAMENT_YEAR}.json`);
-const season = "2025-26";
-const roundNames = [
-  "First Four",
-  "First Round",
-  "Second Round",
-  "Sweet 16",
-  "Elite 8",
-  "Semifinal",
-  "Championship",
+const fieldFile = path.join(dataDir, `tournament-${TOURNAMENT_YEAR}.json`);
+const regionOrder = ["East", "South", "West", "Midwest"];
+// First Round games in bracket order, top seed first.
+const firstRoundSeeds = [
+  [1, 16],
+  [8, 9],
+  [5, 12],
+  [4, 13],
+  [6, 11],
+  [3, 14],
+  [7, 10],
+  [2, 15],
 ];
+export const TEAM_COUNT = 76;
+// 12 Opening Round games, 63 in the 64-team bracket.
+export const GAME_COUNT = 75;
+const OPENING_ROUND_GAMES = 12;
 
-// Reads the saved ESPN snapshot, or downloads (and saves) it when missing or
-// when `refresh` is set.
-export async function loadTournament(refresh = false): Promise<Tournament> {
-  if (!refresh) {
-    try {
-      return JSON.parse(await readFile(snapshot, "utf8")).bracket;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-  }
-  const bracket = await fetchTournament();
-  await writeFile(
-    snapshot,
-    JSON.stringify(
-      { sourceUrl, retrievedAt: new Date().toISOString(), bracket },
-      null,
-      2,
-    ) + "\n",
-  );
-  return bracket;
+// The field saved in data/tournament-<year>.json. Each region lists its
+// seeds 1 to 16; a seed with two teams is an Opening Round game whose winner
+// takes that seed's First Round slot. Teams are named by their location in
+// data/teams.json.
+export type Field = {
+  season: string;
+  projected?: boolean;
+  sourceUrl: string;
+  retrievedAt: string;
+  regions: { name: string; seeds: string[][] }[];
+};
+
+type GameRow = Omit<typeof games.$inferInsert, "team1Id" | "team2Id"> & {
+  // Source team ids (data/teams.json), swapped for database ids on import.
+  team1: string | null;
+  team2: string | null;
+};
+
+export async function loadTournament(): Promise<Field> {
+  return JSON.parse(await readFile(fieldFile, "utf8"));
 }
 
 // Downloads the current bracket from ESPN without saving it anywhere.
@@ -67,150 +70,145 @@ export async function fetchTournament(): Promise<Tournament> {
   );
   const bracket: Tournament = state.page.content.bracket;
   if (!bracket?.matchups?.length || bracket.season !== season) {
-    throw new Error("ESPN did not return the 2025-26 tournament");
+    throw new Error(`ESPN did not return the ${season} tournament`);
   }
   return bracket;
 }
 
-// Checks the bracket is complete and consistent, and builds the team rows.
-export async function validateTournament(bracket: Tournament) {
-  const sourceGames = bracket.matchups;
-  if (
-    bracket.season !== season ||
-    sourceGames.length !== 67 ||
-    new Set(sourceGames.map((game) => game.id)).size !== 67
-  ) {
-    throw new Error("Expected 67 unique games for the 2026 tournament");
-  }
-  const counts = [4, 32, 16, 8, 4, 2, 1];
-  for (const [round, count] of counts.entries()) {
-    const matches = sourceGames.filter((game) => game.roundId === round);
-    if (
-      matches.length !== count ||
-      new Set(matches.map((game) => game.bracketLocation)).size !== count ||
-      matches.some(
-        (game) => game.bracketLocation < 1 || game.bracketLocation > count,
-      )
-    ) {
-      throw new Error(`Invalid slots for ${roundNames[round]}`);
-    }
-  }
-  const regionFor = (game: Matchup) => sourceRegionFor(bracket, game);
-  const teamRows = new Map<string, typeof teams.$inferInsert>();
+// Checks the field is complete and builds the team and game rows.
+export async function validateTournament(field: Field) {
+  if (field.season !== season)
+    throw new Error(`Expected the ${season} tournament`);
+  if (field.regions.map((region) => region.name).join() !== regionOrder.join())
+    throw new Error(`Regions must be ${regionOrder.join(", ")}`);
+
   const catalog: {
     sports: {
       leagues: {
-        teams: { team: { id: string; slug: string; name: string } }[];
+        teams: {
+          team: {
+            id: string;
+            slug: string;
+            abbreviation: string;
+            name: string;
+            location: string;
+            color?: string;
+            alternateColor?: string;
+            logos?: { href: string }[];
+          };
+        }[];
       }[];
     }[];
   } = JSON.parse(await readFile(path.join(dataDir, "teams.json"), "utf8"));
-  const metadata = new Map(
+  const byLocation = new Map(
     catalog.sports.flatMap((sport) =>
       sport.leagues.flatMap((league) =>
-        league.teams.map(({ team }) => [team.id, team] as const),
+        league.teams.map(({ team }) => [team.location, team] as const),
       ),
     ),
   );
-  for (const game of sourceGames) {
-    const competitors = [game.competitorOne, game.competitorTwo];
-    if (
-      game.statusState !== "post" ||
-      competitors.filter((team) => team?.winner).length !== 1 ||
-      competitors.some(
-        (team) =>
-          !team?.id ||
-          !team.name ||
-          !Number.isInteger(Number(team.seed)) ||
-          Number(team.seed) < 1 ||
-          Number(team.seed) > 16,
-      ) ||
-      competitors[0].id === competitors[1].id
-    ) {
-      throw new Error(`Incomplete or invalid game ${game.id}`);
-    }
-    if (game.roundId > 1) {
-      const feeders = sourceGames.filter(
-        (previous) =>
-          previous.roundId === game.roundId - 1 &&
-          [game.bracketLocation * 2 - 1, game.bracketLocation * 2].includes(
-            previous.bracketLocation,
-          ),
-      );
-      const winners = feeders.map(
-        (feeder) =>
-          [feeder.competitorOne, feeder.competitorTwo].find(
-            (team) => team.winner,
-          )!.id,
-      );
-      if (
-        winners.length !== 2 ||
-        competitors.some((team) => !winners.includes(team.id))
-      ) {
-        throw new Error(`Feeder winners do not match game ${game.id}`);
-      }
-    }
-    const region = regionFor(game);
-    for (const team of competitors) {
-      if (!region) {
-        if (!teamRows.has(team.id))
-          throw new Error(`Unknown finalist ${team.id}`);
-        continue;
-      }
-      const existing = teamRows.get(team.id);
-      if (
-        existing &&
-        (existing.region !== region || existing.seed !== Number(team.seed))
-      ) {
-        throw new Error(`Inconsistent team placement: ${team.name}`);
-      }
-      const details = metadata.get(team.id);
-      teamRows.set(team.id, {
-        teamId: team.id,
-        slug:
-          details?.slug ??
-          `${team.location.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${team.id}`,
-        name: team.location,
-        nickname: details?.name ?? team.name,
-        abbreviation: team.abbreviation,
-        color: team.color || "000000",
-        alternateColor: team.alternateColor || "ffffff",
-        logo: team.logo,
-        seed: Number(team.seed),
-        region,
+
+  const teamRows = new Map<string, typeof teams.$inferInsert>();
+  const gameRows: GameRow[] = [];
+  const row = (
+    gameId: string,
+    round: string,
+    region: string | null,
+    team1: string | null = null,
+    team2: string | null = null,
+  ) =>
+    gameRows.push({ gameId, year: TOURNAMENT_YEAR, region, round, team1, team2 });
+
+  for (const region of field.regions) {
+    if (region.seeds.length !== 16)
+      throw new Error(`${region.name} must have 16 seeds`);
+    // Source team ids by seed; two for an Opening Round seed.
+    const seedTeams = region.seeds.map((names, index) => {
+      if (names.length < 1 || names.length > 2)
+        throw new Error(`${region.name} seed ${index + 1} needs 1 or 2 teams`);
+      return names.map((name) => {
+        const team = byLocation.get(name);
+        if (!team) throw new Error(`Unknown team: ${name}`);
+        if (teamRows.has(team.id)) throw new Error(`${name} is in twice`);
+        teamRows.set(team.id, {
+          teamId: team.id,
+          slug: team.slug,
+          name: team.location,
+          nickname: team.name,
+          abbreviation: team.abbreviation,
+          color: team.color || "000000",
+          alternateColor: team.alternateColor || "ffffff",
+          logo: team.logos?.[0]?.href ?? "",
+          seed: index + 1,
+          region: region.name,
+        });
+        return team.id;
       });
+    });
+    const code = region.name.toLowerCase();
+    firstRoundSeeds.forEach((pair, slot) => {
+      const [top, bottom] = pair.map((seed) => seedTeams[seed - 1]);
+      if (top.length === 2 && bottom.length === 2)
+        throw new Error(`${region.name} game ${slot + 1} has two Opening Round slots`);
+      // An Opening Round slot is empty until a winner is picked.
+      row(
+        `${code}-r64-${slot + 1}`,
+        "First Round",
+        region.name,
+        top.length === 1 ? top[0] : null,
+        bottom.length === 1 ? bottom[0] : null,
+      );
+    });
+    for (const [round, count] of [
+      ["Second Round", 4],
+      ["Sweet 16", 2],
+      ["Elite 8", 1],
+    ] as const) {
+      const roundCode = { "Second Round": "r32", "Sweet 16": "s16", "Elite 8": "e8" }[round];
+      for (let slot = 0; slot < count; slot++)
+        row(`${code}-${roundCode}-${slot}`, round, region.name);
     }
   }
-  if (teamRows.size !== 68)
-    throw new Error(`Expected 68 teams, received ${teamRows.size}`);
-  const firstRoundIds = new Set(
-    sourceGames
-      .filter((game) => game.roundId === 1)
-      .flatMap((game) => [game.competitorOne.id, game.competitorTwo.id]),
+  // Opening Round games last so they're numbered by region, then seed.
+  const openingRound = field.regions.flatMap((region) =>
+    region.seeds
+      .filter((names) => names.length === 2)
+      .map((names) => ({
+        region: region.name,
+        teams: names.map((name) => byLocation.get(name)!.id),
+      })),
   );
-  for (const game of sourceGames.filter((game) => game.roundId === 0)) {
-    const winner = [game.competitorOne, game.competitorTwo].find(
-      (team) => team.winner,
-    )!;
-    const loser = [game.competitorOne, game.competitorTwo].find(
-      (team) => !team.winner,
-    )!;
-    if (!firstRoundIds.has(winner.id) || firstRoundIds.has(loser.id)) {
-      throw new Error(`First Four advancement mismatch: ${game.id}`);
-    }
-  }
-  return teamRows;
+  openingRound.forEach((game, index) =>
+    row(
+      `opening-round-${index + 1}`,
+      OPENING_ROUND,
+      game.region,
+      game.teams[0],
+      game.teams[1],
+    ),
+  );
+  row("ff-1", "Semifinal", null);
+  row("ff-2", "Semifinal", null);
+  row("championship", "Championship", null);
+
+  if (openingRound.length !== OPENING_ROUND_GAMES)
+    throw new Error(
+      `Expected ${OPENING_ROUND_GAMES} Opening Round games, found ${openingRound.length}`,
+    );
+  if (teamRows.size !== TEAM_COUNT)
+    throw new Error(`Expected ${TEAM_COUNT} teams, found ${teamRows.size}`);
+  if (gameRows.length !== GAME_COUNT)
+    throw new Error(`Expected ${GAME_COUNT} games, built ${gameRows.length}`);
+  return { teamRows, gameRows };
 }
 
 // Writes the tournament's teams and games in one transaction. User picks are
 // kept; `replace` clears existing games and teams first.
 export async function importTournament(
   database: NodePgDatabase,
-  bracket: Tournament,
-  teamRows: Map<string, typeof teams.$inferInsert>,
+  { teamRows, gameRows }: Awaited<ReturnType<typeof validateTournament>>,
   { replace = false } = {},
 ) {
-  const sourceGames = bracket.matchups;
-  const regionFor = (game: Matchup) => sourceRegionFor(bracket, game);
   await database.transaction(async (transaction) => {
     if (replace) {
       await transaction.delete(games);
@@ -225,63 +223,35 @@ export async function importTournament(
         .returning({ id: teams.id });
       idByTeamId.set(team.teamId, saved.id);
     }
-    for (const game of sourceGames) {
-      const region = regionFor(game);
-      const gameId = gameIdFor(bracket, game);
-      const isFirstFourSlot = (competitor: Competitor) =>
-        game.roundId === 1 &&
-        sourceGames.some(
-          (feeder) =>
-            feeder.roundId === 0 &&
-            regionFor(feeder) === region &&
-            feeder.competitorOne.seed === competitor.seed,
-        );
-      const pendingFirstFour =
-        isFirstFourSlot(game.competitorOne) ||
-        isFirstFourSlot(game.competitorTwo);
-      const participantId = (competitor: Competitor) => {
-        if (game.roundId > 1) return null;
-        if (!isFirstFourSlot(competitor)) return idByTeamId.get(competitor.id)!;
-        return null;
-      };
-      const row = {
-        gameId,
-        year: TOURNAMENT_YEAR,
-        region,
-        round: roundNames[game.roundId],
-        team1Id: participantId(game.competitorOne),
-        team2Id: participantId(game.competitorTwo),
-        ...(game.roundId === 0 || pendingFirstFour
-          ? {
-              actualWinnerTeamId: null,
-            }
-          : {}),
+    for (const { team1, team2, ...game } of gameRows) {
+      const values = {
+        ...game,
+        team1Id: team1 && idByTeamId.get(team1)!,
+        team2Id: team2 && idByTeamId.get(team2)!,
+        actualWinnerTeamId: null,
+        actualScore1: null,
+        actualScore2: null,
       };
       await transaction
         .insert(games)
-        .values(row)
-        .onConflictDoUpdate({ target: games.gameId, set: row });
+        .values(values)
+        .onConflictDoUpdate({ target: games.gameId, set: values });
     }
-    const storedTeams = await transaction.select().from(teams);
-    const storedGames = await transaction.select().from(games);
+    const storedGames = await transaction
+      .select()
+      .from(games)
+      .where(eq(games.year, TOURNAMENT_YEAR));
+    const openSlots = storedGames
+      .filter((game) => game.round === "First Round")
+      .flatMap((game) => [game.team1Id, game.team2Id])
+      .filter((id) => !id).length;
     if (
-      storedTeams.length !== 68 ||
-      storedGames.length !== 67 ||
+      storedGames.length !== GAME_COUNT ||
+      openSlots !== OPENING_ROUND_GAMES ||
       storedGames.some(
         (game) =>
-          game.year !== TOURNAMENT_YEAR ||
-          (game.round === "First Four" &&
-            (!game.team1Id || !game.team2Id || game.actualWinnerTeamId)) ||
-          (game.round === "First Round" && !game.team1Id && !game.team2Id) ||
-          (game.round === "First Round" &&
-            (!game.team1Id || !game.team2Id) &&
-            game.actualWinnerTeamId),
-      ) ||
-      storedGames
-        .filter((game) => game.round === "First Round")
-        .flatMap((game) => [game.team1Id, game.team2Id])
-        .filter((id) => !id).length !==
-        storedGames.filter((game) => game.round === "First Four").length
+          game.round === OPENING_ROUND && (!game.team1Id || !game.team2Id),
+      )
     ) {
       throw new Error("Database verification failed; rolling back import");
     }

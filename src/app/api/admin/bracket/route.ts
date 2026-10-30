@@ -28,10 +28,12 @@ export async function POST(request: Request) {
         { status: 409 },
       );
 
-    const bracket = await loadTournament();
-    const teamRows = await validateTournament(bracket);
-    await importTournament(db, bracket, teamRows);
-    return Response.json({ teams: teamRows.size, games: bracket.matchups.length });
+    const tournament = await validateTournament(await loadTournament());
+    await importTournament(db, tournament);
+    return Response.json({
+      teams: tournament.teamRows.size,
+      games: tournament.gameRows.length,
+    });
   } catch (error) {
     console.error("Could not load the bracket", error);
     return Response.json(

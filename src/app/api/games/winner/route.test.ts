@@ -19,6 +19,7 @@ import type { BracketState, Match } from "@/lib/types";
 import { DELETE, PUT } from "./route";
 import { DELETE as clearResults, PUT as saveResults } from "../results/route";
 import { saveActualResults } from "@/lib/results";
+import { GAME_COUNT, TOURNAMENT_YEAR } from "@/lib/import-tournament";
 import { applyResults, resultsAsBracket, simulateResults } from "@/lib/simulate";
 import {
   DELETE as createBracketDelete, POST as createBracketRoute,
@@ -31,7 +32,7 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
   try {
     const before = await db.select().from(games).orderBy(games.id);
     const teamRows = await db.select().from(teams);
-    assert.equal(before.length, 67, "Import the 2026 tournament before testing");
+    assert.equal(before.length, GAME_COUNT, `Import the ${TOURNAMENT_YEAR} tournament before testing`);
     const statements = await generateMigration(
       generateDrizzleJson({}), generateDrizzleJson(schema),
     );
@@ -186,7 +187,8 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           const otherFirstFour = otherState.firstFour?.[0];
           assert.ok(otherFirstFour?.teams[1]);
           otherState = await pick(otherFirstFour.id, otherFirstFour.teams[1].name);
-          const otherFirstRound = otherState.regions[0].rounds[0].matches[0];
+          // The 8-9 game: no Opening Round slot.
+          const otherFirstRound = otherState.regions[0].rounds[0].matches[1];
           assert.ok(otherFirstRound.teams[1]);
           otherState = await pick(otherFirstRound.id, otherFirstRound.teams[1].name);
           const otherPicks = await tx.select().from(picks).where(eq(picks.userId, "user-b"));
@@ -211,7 +213,7 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           assert.equal(state.championship.winner?.name, "Duke");
           assert.equal(
             (await tx.select().from(picks).where(eq(picks.userId, "user-a"))).length,
-            67,
+            GAME_COUNT,
           );
 
           // The same user's bracket in another group starts empty and is
@@ -220,13 +222,13 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           assert.deepEqual(
             (await loadBracketFromDatabase(otherOwner, tx)).state, anonymous.state,
           );
-          const otherGroupGame = state.regions[0].rounds[0].matches[0];
+          const otherGroupGame = state.regions[0].rounds[0].matches[1];
           assert.ok(otherGroupGame.teams[1]);
           const otherGroupState = await pick(
             otherGroupGame.id, otherGroupGame.teams[1].name, otherGroup,
           );
           assert.equal(
-            otherGroupState.regions[0].rounds[0].matches[0].winner?.name,
+            otherGroupState.regions[0].rounds[0].matches[1].winner?.name,
             otherGroupGame.teams[1].name,
           );
           assert.deepEqual((await currentBracket()).state, state);
@@ -247,22 +249,22 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           );
           assert.deepEqual((await currentBracket()).state, state);
 
-          // Leave Louisville available as a new Sweet 16 pick.
+          // Leave Nebraska available as a new Sweet 16 pick.
           const east = state.regions.find((region) => region.name === "East");
           assert.ok(east);
-          const louisvilleGame = east.rounds[2].matches[1];
-          assert.equal(louisvilleGame.teams[0]?.name, "Louisville");
-          const opponent = louisvilleGame.teams[1];
+          const nebraskaGame = east.rounds[2].matches[1];
+          assert.equal(nebraskaGame.teams[0]?.name, "Nebraska");
+          const opponent = nebraskaGame.teams[1];
           assert.ok(opponent);
-          state = await pick(louisvilleGame.id, opponent.name);
+          state = await pick(nebraskaGame.id, opponent.name);
           assert.equal(state.championship.winner?.name, "Duke");
 
           const beforeChange = structuredClone(state);
-          state = await pick(east.rounds[0].matches[0].id, "Siena");
+          state = await pick(east.rounds[0].matches[0].id, "Lipscomb");
           const updatedEast = state.regions.find((region) => region.name === "East");
           assert.ok(updatedEast);
-          assert.equal(updatedEast.rounds[0].matches[0].winner?.name, "Siena");
-          assert.equal(updatedEast.rounds[1].matches[0].teams[0]?.name, "Siena");
+          assert.equal(updatedEast.rounds[0].matches[0].winner?.name, "Lipscomb");
+          assert.equal(updatedEast.rounds[1].matches[0].teams[0]?.name, "Lipscomb");
           for (let round = 1; round < 4; round++) {
             assert.equal(updatedEast.rounds[round].matches[0].winner, null);
           }
@@ -282,26 +284,26 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           assert.deepEqual(state.regions.slice(1), beforeChange.regions.slice(1));
           assert.deepEqual(state.ff[1], beforeChange.ff[1]);
 
-          state = await pick(louisvilleGame.id, "Louisville");
+          state = await pick(nebraskaGame.id, "Nebraska");
           assert.equal(
             state.regions[0].rounds[2].matches[1].winner?.name,
-            "Louisville",
+            "Nebraska",
           );
           assert.equal(
             state.regions[0].rounds[3].matches[0].teams[1]?.name,
-            "Louisville",
+            "Nebraska",
           );
 
           // Rebuild the changed path through a new champion.
-          state = await pick(updatedEast.rounds[1].matches[0].id, "Siena");
-          state = await pick(updatedEast.rounds[2].matches[0].id, "Siena");
-          state = await pick(updatedEast.rounds[3].matches[0].id, "Louisville");
-          state = await pick(state.ff[0].id, "Louisville");
-          state = await pick(state.championship.id, "Louisville");
-          assert.equal(state.championship.winner?.name, "Louisville");
+          state = await pick(updatedEast.rounds[1].matches[0].id, "Lipscomb");
+          state = await pick(updatedEast.rounds[2].matches[0].id, "Lipscomb");
+          state = await pick(updatedEast.rounds[3].matches[0].id, "Nebraska");
+          state = await pick(state.ff[0].id, "Nebraska");
+          state = await pick(state.championship.id, "Nebraska");
+          assert.equal(state.championship.winner?.name, "Nebraska");
 
           const unchanged = structuredClone(state);
-          state = await pick(louisvilleGame.id, "Louisville");
+          state = await pick(nebraskaGame.id, "Nebraska");
           assert.deepEqual(state, unchanged);
 
           const semifinalOpponent = state.ff[0].teams[1];
@@ -424,7 +426,7 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           );
           const putInBracket = (bracket: unknown) => PUT(new Request("http://localhost/api/games/winner", {
             method: "PUT",
-            body: JSON.stringify({ groupId: mainGroup, bracket, gameId: "east-r64-1", teamName: "Siena" }),
+            body: JSON.stringify({ groupId: mainGroup, bracket, gameId: "east-r64-1", teamName: "Duke" }),
           }));
           assert.equal((await putInBracket(2)).status, 404, "bracket 2 must be created first");
           assert.equal((await putInBracket(4)).status, 400);
@@ -467,7 +469,7 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           assert.deepEqual((await secondPick.json()).state, secondState);
           assert.equal(
             bracketMatches(secondState).find((match) => match.id === "east-r64-1")?.winner?.name,
-            "Siena",
+            "Duke",
           );
           assert.deepEqual(
             (await loadBracketFromDatabase({ userId: "user-a", groupId: mainGroup }, tx)).state,
@@ -502,7 +504,7 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
             });
           const winnerRows = () => tx.select({ gameId: games.gameId, winner: teams.name })
             .from(games).innerJoin(teams, eq(games.actualWinnerTeamId, teams.id))
-            .where(eq(games.year, 2026));
+            .where(eq(games.year, TOURNAMENT_YEAR));
           const simulated = simulateResults(anonymous.state).winners;
           assert.equal((await saveResults(resultsRequest("PUT", simulated))).status, 403);
           assert.equal((await clearResults(resultsRequest("DELETE"))).status, 403);
@@ -533,7 +535,7 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           }
           const saved = await saveResults(resultsRequest("PUT", simulated));
           assert.equal(saved.status, 200);
-          assert.equal((await saved.json()).saved, 67);
+          assert.equal((await saved.json()).saved, GAME_COUNT);
           assert.deepEqual(
             Object.fromEntries((await winnerRows()).map((row) => [row.gameId, row.winner])),
             simulated,
@@ -556,7 +558,7 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
           const finalists = applyResults(anonymous.state, simulated).championship.actualTeams!;
           const outsider = teamRows.find((team) =>
             !finalists.some((finalist) => finalist?.name === team.name))!.name;
-          assert.equal(await saveActualResults({ ...simulated, championship: outsider }), 66);
+          assert.equal(await saveActualResults({ ...simulated, championship: outsider }), GAME_COUNT - 1);
           assert.equal((await winnerRows()).some((row) => row.gameId === "championship"), false);
           // Resetting clears the winners and scores but keeps players' picks.
           const picksBeforeReset = await tx.select().from(picks).orderBy(picks.gameId);
@@ -567,7 +569,7 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
 
           const olderGameId = randomUUID();
           await tx.insert(games).values({
-            id: olderGameId, gameId: "previous-tournament", year: 2025,
+            id: olderGameId, gameId: "previous-tournament", year: TOURNAMENT_YEAR - 1,
             round: "First Round", team1Id: teamRows[0].id, team2Id: teamRows[1].id,
           });
           await tx.insert(picks).values({
@@ -631,7 +633,7 @@ test("user picks stay isolated through completed-bracket edits and resets", asyn
             { userId: "user-b", groupId: mainGroup }, tx,
           )).state, otherState);
           assert.deepEqual(
-            await tx.select().from(games).where(eq(games.year, 2026)).orderBy(games.id),
+            await tx.select().from(games).where(eq(games.year, TOURNAMENT_YEAR)).orderBy(games.id),
             unplayed,
           );
         } finally {

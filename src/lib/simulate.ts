@@ -26,7 +26,7 @@ function walkActual(state: BracketState, decide: Decide): BracketState {
         let actualTeams: [Team | null, Team | null];
         if (roundIndex === 0) {
           actualTeams = [...match.teams];
-          // First Four slots hold the user's pick; swap in the real winner.
+          // Opening Round slots hold the user's pick; swap in the real winner.
           for (const feeder of firstFour ?? []) {
             if (feeder.nextGameId === match.id) {
               actualTeams[feeder.nextSlot] = feeder.actualWinner ?? null;
@@ -94,7 +94,7 @@ function simulateScore(winner: Team, loser: Team): [number, number] {
 }
 
 // The ids of the games played through the given round, counting the Round of
-// 64 as round 1. The First Four comes before it, so it's always included;
+// 64 as round 1. The Opening Round comes before it, so it's always included;
 // rounds 5 and 6 are the Final Four and the championship.
 function gamesThroughRound(state: BracketState, throughRound: number) {
   const ids = new Set(state.firstFour?.map((match) => match.id));
@@ -109,7 +109,7 @@ function gamesThroughRound(state: BracketState, throughRound: number) {
 }
 
 // How many rounds have a winner in every game, counting as in
-// `gamesThroughRound`: 0 before the First Four and Round of 64 are done, 6
+// `gamesThroughRound`: 0 before the Opening Round and Round of 64 are done, 6
 // once the championship is.
 export function completedRounds(state: BracketState, winners: SimResults) {
   let completed = 0;

@@ -155,7 +155,7 @@ export function AdminMenu() {
                   index > roundsDone
                     ? `Simulate the ${ROUND_POINTS[index - 1].name} first`
                     : index === 0
-                      ? "Plays the First Four and Round of 64"
+                      ? "Plays the Opening Round and Round of 64"
                       : `Keeps earlier results and plays through the ${round.name}`
                 }
                 onSelect={() => {

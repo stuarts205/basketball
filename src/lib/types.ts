@@ -16,6 +16,10 @@ export type Match = {
 };
 export type Round = { name: string; matches: Match[] };
 export type Region = { name: string; rounds: Round[] };
+// The round before the 64-team bracket: 12 games whose winners fill First
+// Round slots. It replaced the four-game First Four in 2027.
+export const OPENING_ROUND = "Opening Round";
+
 export type FirstFourMatch = Match & {
   region: string;
   nextGameId: string;

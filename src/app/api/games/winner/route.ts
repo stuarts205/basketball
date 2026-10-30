@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { hasBracket, parseBracketNumber } from "@/lib/brackets";
 import { UUID_PATTERN, findUserGroup } from "@/lib/groups";
 import { bracketMatches, loadBracketFromDatabase } from "@/lib/load-bracket";
+import { OPENING_ROUND } from "@/lib/types";
 
 const notAMember = {
   status: 404,
@@ -132,7 +133,7 @@ export async function PUT(request: Request) {
         .where(and(eq(games.gameId, gameId), eq(games.year, bracket.year)));
       if (
         game.round !== "First Round" &&
-        game.round !== "First Four" &&
+        game.round !== OPENING_ROUND &&
         match.teams.some((team) => team === null)
       ) {
         return {
