@@ -15,7 +15,7 @@ import { MatchCard } from "./match-card";
 import { FinalFourCenter } from "./final-four-center";
 import { RegionBracketMirrored } from "./region-bracket-mirrored";
 
-// The First Four and the full bracket: stacked on mobile, scaled to fit the
+// The Opening Round and the full bracket: stacked on mobile, scaled to fit the
 // width with mirrored right regions on desktop.
 export const BracketView = ({
   state,
@@ -60,13 +60,13 @@ export const BracketView = ({
     <>
       {!!state.firstFour?.length && (
         <section
-          aria-label="First Four"
+          aria-label="Opening Round"
           aria-busy={busy}
           className="mb-8 border-b border-gray-200 pb-6"
         >
           <h2 className="mb-4 text-[11px] font-extrabold uppercase tracking-widest">
             <span className="inline-block rounded-full bg-sideline-900/85 px-3 py-0.5 text-white shadow-sm">
-              First Four
+              Opening Round
             </span>
           </h2>
           <fieldset

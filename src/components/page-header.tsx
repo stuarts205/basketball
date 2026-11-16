@@ -1,8 +1,9 @@
 import React from "react";
+import { AdminMenu } from "./admin-menu";
 
 // A page's title and subtitle, styled to stand out on the court background,
 // with optional controls on the right of the same row (they wrap underneath
-// on narrow screens).
+// on narrow screens). The super admin's menu always ends the row.
 export const PageHeader = ({
   title,
   subtitle,
@@ -26,6 +27,9 @@ export const PageHeader = ({
         )}
       </div>
     </div>
-    {actions}
+    <div className="flex flex-wrap items-center gap-3 empty:hidden">
+      {actions}
+      <AdminMenu />
+    </div>
   </div>
 );

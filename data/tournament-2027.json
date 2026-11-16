@@ -1,0 +1,92 @@
+{
+  "season": "2026-27",
+  "projected": true,
+  "sourceUrl": "https://www.cbssports.com/college-basketball/news/2027-ncaa-tournament-bracketology-preseason-projections-duke/",
+  "retrievedAt": "2026-10-30",
+  "regions": [
+    {
+      "name": "East",
+      "seeds": [
+        ["Duke"],
+        ["Alabama"],
+        ["Kansas"],
+        ["Iowa State"],
+        ["Arkansas"],
+        ["Nebraska"],
+        ["Saint Louis"],
+        ["Ohio State"],
+        ["Georgia"],
+        ["Clemson"],
+        ["Utah State", "Marquette"],
+        ["Indiana", "NC State"],
+        ["UNC Wilmington"],
+        ["Yale"],
+        ["Montana State", "Merrimack"],
+        ["Lipscomb", "Long Island University"]
+      ]
+    },
+    {
+      "name": "South",
+      "seeds": [
+        ["Houston"],
+        ["Illinois"],
+        ["Virginia"],
+        ["Tennessee"],
+        ["Michigan"],
+        ["Wisconsin"],
+        ["Kentucky"],
+        ["VCU"],
+        ["UCLA"],
+        ["SMU"],
+        ["Grand Canyon"],
+        ["Florida State", "Cincinnati"],
+        ["Wichita State"],
+        ["McNeese"],
+        ["East Tennessee State"],
+        ["Austin Peay", "Tennessee State"]
+      ]
+    },
+    {
+      "name": "West",
+      "seeds": [
+        ["Arizona"],
+        ["Michigan State"],
+        ["Vanderbilt"],
+        ["Texas"],
+        ["Purdue"],
+        ["Louisville"],
+        ["Auburn"],
+        ["Villanova"],
+        ["Texas A&M"],
+        ["Saint Mary's"],
+        ["Akron"],
+        ["West Virginia", "Colorado State"],
+        ["High Point"],
+        ["Western Kentucky"],
+        ["UC Irvine"],
+        ["Howard", "Bethune-Cookman"]
+      ]
+    },
+    {
+      "name": "Midwest",
+      "seeds": [
+        ["Florida"],
+        ["UConn"],
+        ["Texas Tech"],
+        ["Gonzaga"],
+        ["St. John's"],
+        ["Miami"],
+        ["North Carolina"],
+        ["BYU"],
+        ["Iowa"],
+        ["Missouri"],
+        ["Providence", "Oklahoma"],
+        ["LSU", "Baylor"],
+        ["Murray State"],
+        ["St. Thomas-Minnesota"],
+        ["Vermont", "James Madison"],
+        ["American University", "Robert Morris"]
+      ]
+    }
+  ]
+}
